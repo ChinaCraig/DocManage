@@ -1,0 +1,90 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+app.log
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Environment variables
+.env
+config.env
+
+# Uploads (可选，根据需要调整)
+uploads/*
+!uploads/.gitkeep
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# Testing
+test_*.py
+test_*.html
+debug_*.py
+debug_*.html
+*_test.py
+*_demo.py
+demo.*
+
+# Documentation (开发过程文档)
+*_SUMMARY.md
+*_IMPROVEMENTS.md
+*_FEATURE*.md
+SETUP.md
+DATABASE_*.md
+TOAST_*.md
+COMPLETE_*.md
+TOPLEVEL_*.md
+NEW_FEATURES*.md
+COMPLETION_*.md
+BUTTON_LAYOUT*.md
+FOLDER_UPLOAD*.md 
