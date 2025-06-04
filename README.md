@@ -1,539 +1,182 @@
-# 律师案件案宗文档管理系统
+# 智能文档管理与语义检索系统
 
-基于Flask的智能文档管理系统，支持多种文件格式处理、向量化存储和自然语义检索。
+## 🎯 系统概述
 
-## 🌟 功能特性
+这是一个集成的智能文档管理和语义检索系统，专为高效的文档处理和智能搜索而设计。系统将文档管理、内容识别、向量化处理和语义搜索功能统一到一个页面中，提供流畅的用户体验。
+
+## ✨ 主要功能
+
+### 🔍 智能语义搜索
+- **自然语言查询**：使用AI技术理解用户意图
+- **相似度评分**：显示搜索结果的相关性得分
+- **上下文定位**：精确定位文档中的相关内容
+- **多文档检索**：跨多个文档进行语义搜索
 
 ### 📁 文档管理
-- ✅ 可编辑文档结构树（文件夹+文件）
-- ✅ 支持多种文件格式上传：PDF、Word、Excel、图片、视频
-- ✅ 文件夹层级管理，只有文件夹可作为父节点
-- ✅ 可编辑文本内容和描述
+- **文件上传**：支持单文件和文件夹批量上传
+- **文件夹管理**：创建文件夹层级结构
+- **文档编辑**：修改文档名称和描述
+- **文档删除**：安全删除文档和文件夹
+- **文档预览**：查看文档详细信息
 
-### 🤖 智能向量化功能
-- ✅ **多格式支持**: PDF、Word、Excel、图片、视频文件向量化
-- ✅ **智能文档分析**: 自动提取文本内容，支持OCR识别
-- ✅ **可视化预览**: 文档信息展示（名称、分段数量、文本长度）
-- ✅ **灵活分段配置**: 可调整分段大小（100-5000字符）和重叠长度（0-1000字符）
-- ✅ **实时重新分段**: 即时调整参数并预览分段效果
-- ✅ **分段内容编辑**: 用户可编辑或删除特定文本分段
-- ✅ **MinIO对象存储**: 自动上传原文件到MinIO存储
-- ✅ **向量数据库集成**: 文本向量存储到Milvus数据库
-- ✅ **状态跟踪**: 完整的向量化状态和元数据管理
-- ✅ **现代化UI**: 响应式界面，支持Bootstrap模态框和交互
+### 🤖 智能向量化
+- **多格式支持**：PDF、Word、Excel、图像等
+- **内容识别**：OCR文字识别，支持多种引擎
+- **内容预览**：向量化前预览和编辑文本
+- **参数调整**：自定义分块大小和重叠度
+- **批量处理**：高效的批量文档向量化
 
-### 🔍 智能检索
-- ✅ 自然语义检索（基于向量相似度）
-- ✅ 文档名称搜索
-- ✅ 多格式文档内容提取和分块处理
-- ✅ 支持文本型和扫描图像型文档
+### 🎨 用户界面
+- **统一界面**：所有功能集成在一个页面
+- **模式切换**：语义搜索和文档管理模式切换
+- **响应式设计**：适配各种屏幕尺寸
+- **实时反馈**：操作状态和进度实时显示
 
-### 🏗️ 技术架构
-- **后端**: Python Flask + SQLAlchemy
-- **数据库**: MySQL 
-- **向量数据库**: Milvus
-- **对象存储**: MinIO
-- **文档处理**: PyMuPDF, pdfplumber, pytesseract, python-docx, pandas
-- **文本嵌入**: sentence-transformers
-- **前端**: Bootstrap 5 + Vanilla JavaScript
+## 🖥 系统架构
+
+### 前端技术
+- **Bootstrap 5**：响应式UI框架
+- **原生JavaScript**：无额外框架依赖
+- **模块化设计**：功能模块化组织
+
+### 后端技术
+- **Flask**：Python Web框架
+- **SQLAlchemy**：数据库ORM
+- **Milvus**：向量数据库
+- **MinIO**：对象存储（可选）
+
+### AI技术栈
+- **多OCR引擎**：Tesseract、EasyOCR、PaddleOCR
+- **文本向量化**：SentenceTransformers
+- **语义搜索**：向量相似度匹配
+- **内容识别**：多语言文字识别
 
 ## 🚀 快速开始
 
-### 📋 环境要求
-- Python 3.12+ (推荐，已解决Python 3.13兼容性问题)
-- MySQL 5.7+
-- Milvus 2.0+ (可选)
-- MinIO (可选)
-- Tesseract OCR
-
-### ⚡ 5分钟快速启动
-
-#### 1. 克隆项目并安装依赖
+### 1. 启动系统
 ```bash
-git clone <repository-url>
-cd DocManage2
-
-# 创建虚拟环境
-python3.12 -m venv .venv
-source .venv/bin/activate  # Linux/Mac
-# 或 .venv\\Scripts\\activate  # Windows
-
-# 安装依赖
-pip install -r requirements.txt
+python app.py
 ```
 
-#### 2. 配置环境变量
-```bash
-# 复制配置文件
-cp config.env.example config.env
+### 2. 访问系统
+打开浏览器访问：http://localhost:5001
 
-# 编辑配置文件
-vim config.env
-```
+### 3. 开始使用
 
-配置示例：
-```env
-# 数据库配置
-MYSQL_HOST=192.168.16.199
-MYSQL_PORT=3306
-MYSQL_USER=root
-MYSQL_PASSWORD=your_password
-MYSQL_DATABASE=document_management
+#### 文档管理模式
+1. 点击"文档管理"标签
+2. 使用左侧工具栏上传文件或创建文件夹
+3. 在文档树中选择文档进行管理
+4. 右键点击文档可进行编辑、向量化、删除操作
 
-# Milvus配置（可选）
-MILVUS_HOST=192.168.16.199
-MILVUS_PORT=19530
-ENABLE_VECTOR_SERVICE=true
+#### 语义搜索模式
+1. 点击"语义搜索"标签（默认模式）
+2. 在搜索框中输入关键词
+3. 查看搜索结果和相关性评分
+4. 点击搜索结果查看详细信息
 
-# MinIO配置（可选）
-MINIO_ENDPOINT=192.168.16.199:9000
-MINIO_ACCESS_KEY=your_access_key
-MINIO_SECRET_KEY=your_secret_key
-MINIO_BUCKET=documents
-ENABLE_MINIO_SERVICE=true
-```
+#### 向量化处理
+1. 在文档管理模式中选择文档
+2. 点击"向量化"按钮
+3. 预览和编辑提取的文本内容
+4. 调整分块参数（可选）
+5. 确认执行向量化
 
-#### 3. 数据库初始化
-```bash
-# 连接MySQL并创建数据库
-mysql -h 192.168.16.199 -u root -p
-mysql> CREATE DATABASE document_management CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-mysql> exit;
+## 📊 支持的文件格式
 
-# 执行建表脚本
-mysql -h 192.168.16.199 -u root -p document_management < database/create_tables.sql
-mysql -h 192.168.16.199 -u root -p document_management < database/add_vectorization_fields.sql
-```
+| 类型 | 扩展名 | 功能特性 |
+|------|--------|----------|
+| PDF | .pdf | 文本+图像提取、OCR识别 |
+| Word | .doc, .docx | 文本、表格、图像处理 |
+| Excel | .xls, .xlsx, .xlsm, .xlsb | 数据分析、模式识别 |
+| 图像 | .jpg, .jpeg, .png, .gif, .bmp, .tiff, .webp, .svg | OCR文字识别、模式检测 |
+| 视频 | .mp4, .avi, .mov, .wmv 等 | 预留支持 |
 
-#### 4. 启动应用
-```bash
-# 设置环境变量避免并发问题
-export TOKENIZERS_PARALLELISM=false
+## 🔧 系统特性
 
-# 启动应用
-python run.py
-```
+### 智能识别
+- **多引擎OCR**：自动选择最佳识别引擎
+- **多语言支持**：中文、英文、日语、韩语
+- **特殊模式**：车牌号、身份证号、电话号码识别
+- **置信度评估**：识别结果可靠性评分
 
-✅ 访问地址：http://localhost:5001
+### 向量化优化
+- **智能分块**：基于文档结构的文本分割
+- **内容编辑**：向量化前允许用户编辑内容
+- **参数可调**：分块大小和重叠度可自定义
+- **批量处理**：支持大量文档的批量向量化
 
-#### 5. 测试向量化功能
-1. 上传一个PDF文件
-2. 在文档详情中点击"向量化"按钮
-3. 调整分段参数并预览
-4. 确认向量化并查看结果
+### 搜索增强
+- **语义理解**：AI理解查询意图
+- **相关性排序**：智能排序搜索结果
+- **上下文高亮**：突出显示匹配内容
+- **跨文档搜索**：全库文档语义检索
 
-## 📖 详细使用指南
+## 📱 使用技巧
 
-### 🔄 向量化工作流程
+### 文档上传
+- 支持拖拽上传，直接将文件拖到上传区域
+- 文件夹上传会保持目录结构
+- 批量上传支持显示上传进度
 
-#### 步骤1：上传文档
-1. 打开浏览器访问 http://localhost:5001
-2. 点击 **"上传文件"** 按钮
-3. 选择支持的文件格式：
-   - **PDF**: `.pdf`
-   - **Word**: `.doc`, `.docx`
-   - **Excel**: `.xls`, `.xlsx`
-   - **图片**: `.jpg`, `.jpeg`, `.png`, `.gif`, `.bmp`, `.tiff`, `.webp`
-   - **视频**: `.mp4`, `.avi`, `.mov`, `.wmv`, `.flv`, `.webm`, `.mkv`, `.m4v`
+### 搜索优化
+- 使用自然语言描述要查找的内容
+- 可以搜索概念性内容，不需要精确匹配
+- 搜索结果按相关性排序，得分越高越相关
 
-#### 步骤2：启动向量化
-1. 在文档树中选择已上传的文件
-2. 在文档详情面板中找到 **"向量化"** 按钮
-3. 点击按钮开始文档分析
+### 向量化建议
+- 大文档建议适当增加分块大小
+- 有重要上下文关联的文档建议增加重叠度
+- 图像文件会自动进行OCR识别
 
-#### 步骤3：预览和编辑
-1. **查看文档信息**：
-   - 文档名称和类型
-   - 分段数量
-   - 文本长度
+## 🛠 开发信息
 
-2. **调整分段参数**：
-   - 分段大小：1000字符（推荐）
-   - 重叠长度：200字符（推荐）
-   - 点击"重新分段"查看效果
-
-3. **编辑分段内容**：
-   - 可以修改任何分段的文本内容
-   - 删除不需要的分段（清空内容）
-   - 每个分段独立可编辑
-
-#### 步骤4：执行向量化
-1. 确认分段内容无误
-2. 点击 **"确认向量化"** 按钮
-3. 系统执行：
-   - 上传原文件到MinIO
-   - 生成文本向量
-   - 存储到向量数据库
-   - 更新文档状态
-
-#### 步骤5：查看结果
-- 文档详情显示向量化状态
-- 查看处理统计信息
-- 支持语义搜索
-
-### 🎯 不同文件类型的处理特点
-
-#### PDF文档
-- **文本型PDF**: 直接提取文本内容
-- **图像型PDF**: 使用OCR识别文字
-- **混合型PDF**: 智能识别并处理
-
-#### Word文档
-- **`.docx`**: 使用python-docx库处理
-- **`.doc`**: 使用docx2txt转换
-- **表格内容**: 自动提取并转换为文本
-
-#### Excel表格
-- **多工作表**: 分别处理每个工作表
-- **结构化数据**: 转换为可搜索的文本格式
-- **表头保留**: 保持数据结构信息
-
-#### 图片文件
-- **OCR识别**: 使用pytesseract和easyocr
-- **多语言支持**: 中英文混合识别
-- **元数据提取**: 图片属性信息
-
-#### 视频文件
-- **元数据提取**: 视频基本信息
-- **字幕处理**: 自动查找同名SRT字幕文件
-- **音频转文字**: 预留接口支持
-
-## 🏗️ 系统架构
-
-### 📁 项目结构
+### 目录结构
 ```
 DocManage2/
-├── app/                          # 应用主目录
-│   ├── __init__.py              # Flask应用工厂
-│   ├── models/                  # 数据模型
-│   │   ├── __init__.py
-│   │   └── document_models.py   # 文档相关模型
-│   ├── services/                # 业务服务层
-│   │   ├── __init__.py
-│   │   ├── pdf_service.py       # PDF处理服务
-│   │   ├── word_service.py      # Word处理服务
-│   │   ├── excel_service.py     # Excel处理服务
-│   │   ├── image_service.py     # 图片处理服务
-│   │   ├── video_service.py     # 视频处理服务
-│   │   ├── vectorization/       # 模块化向量化服务
-│   │   │   ├── __init__.py
-│   │   │   ├── base_vectorizer.py        # 基础向量化器
-│   │   │   ├── pdf_vectorizer.py         # PDF向量化器
-│   │   │   ├── word_vectorizer.py        # Word向量化器
-│   │   │   ├── excel_vectorizer.py       # Excel向量化器
-│   │   │   ├── image_vectorizer.py       # 图片向量化器
-│   │   │   ├── video_vectorizer.py       # 视频向量化器
-│   │   │   ├── vectorization_factory.py  # 向量化工厂
-│   │   │   └── vector_service_adapter.py # 向量服务适配器
-│   │   └── minio_service.py     # MinIO对象存储服务
-│   ├── routes/                  # 路由控制器
-│   │   ├── __init__.py
-│   │   ├── document_routes.py   # 文档管理路由
-│   │   ├── upload_routes.py     # 文件上传路由
-│   │   ├── search_routes.py     # 搜索路由
-│   │   └── vectorize_routes.py  # 向量化路由
-│   └── static/                  # 静态文件
-│       ├── index.html           # 主页面
+├── app/
+│   ├── __init__.py              # 应用初始化和路由
+│   ├── models.py                # 数据模型
+│   ├── routes/                  # API路由
+│   │   ├── document_routes.py   # 文档管理API
+│   │   ├── search_routes.py     # 搜索API
+│   │   ├── upload_routes.py     # 上传API
+│   │   └── vectorize_routes.py  # 向量化API
+│   ├── services/                # 业务服务
+│   │   ├── vectorization/       # 向量化服务
+│   │   └── image_recognition_service.py # 图像识别
+│   └── static/
+│       ├── semantic_search.html # 主页面（集成界面）
 │       └── js/
-│           └── app.js           # 前端JavaScript
-├── database/                    # 数据库相关
-│   ├── create_tables.sql        # 数据库建表脚本
-│   └── add_vectorization_fields.sql  # 向量化字段更新脚本
-├── uploads/                     # 文件上传目录
-├── .venv/                       # Python虚拟环境
-├── config.py                    # 应用配置
-├── config.env                   # 环境变量配置
-├── requirements.txt             # Python依赖
-├── run.py                       # 应用启动入口
-├── setup_milvus.py             # Milvus设置脚本
-└── README.md                    # 项目说明
+│           └── integrated_app.js # 前端逻辑
+├── config.py                    # 配置文件
+├── app.py                      # 启动文件
+└── README.md                   # 本文件
 ```
 
-### 🎨 向量化架构设计
-
-#### 设计模式
-1. **工厂模式**: `VectorizationFactory` 根据文件类型自动选择向量化器
-2. **策略模式**: 每种文件类型有独立的处理策略
-3. **模板方法模式**: `BaseVectorizer` 定义通用流程，子类实现特定逻辑
-
-#### 核心组件
-- **BaseVectorizer**: 基础向量化器抽象类
-- **专门向量化器**: 针对不同文件类型的处理器
-- **VectorizationFactory**: 向量化工厂类
-- **VectorServiceAdapter**: 向量数据库操作适配器
-
-### 🗄️ 数据库设计
-
-#### 主要表结构
-1. **document_nodes** - 文档节点表
-   - 基础字段：id, name, type, parent_id, file_path, created_at, updated_at
-   - 向量化字段：is_vectorized, vector_status, vectorized_at, minio_path, doc_metadata
-
-2. **document_contents** - 文档内容表
-   - 存储提取的文本内容和分块信息
-
-3. **vector_records** - 向量化记录表
-   - 记录向量化状态和Milvus向量ID
-
-4. **system_configs** - 系统配置表
-   - 动态配置参数，包括MinIO和向量化配置
-
-## 🔌 API接口
-
-### 文档管理
-- `GET /api/documents/` - 获取文档列表
+### API端点
 - `GET /api/documents/tree` - 获取文档树
-- `POST /api/documents/folder` - 创建文件夹
-- `PUT /api/documents/{id}` - 更新文档信息
-- `DELETE /api/documents/{id}` - 删除文档
-- `GET /api/documents/{id}/detail` - 获取文档详情
-
-### 文件上传
 - `POST /api/upload/` - 上传文件
-- `POST /api/upload/process/{doc_id}` - 处理上传的文件
-
-### 向量化功能
-- `POST /api/vectorize/preview/{doc_id}` - 预览向量化内容
+- `POST /api/search/` - 语义搜索
+- `POST /api/vectorize/preview/{doc_id}` - 预览向量化
 - `POST /api/vectorize/execute/{doc_id}` - 执行向量化
-- `GET /api/vectorize/status/{doc_id}` - 查询向量化状态
-- `GET /api/vectorize/supported-types` - 获取支持的文件类型
 
-### 搜索功能
-- `GET /api/search/` - 文档搜索
-- `GET /api/search/stats` - 搜索统计信息
+## 📈 性能特性
 
-## ⚙️ 配置说明
+- **响应式加载**：按需加载文档内容
+- **增量搜索**：实时搜索结果更新
+- **缓存优化**：智能缓存提升性能
+- **并行处理**：支持并发向量化任务
 
-### 环境变量配置
-```env
-# 数据库配置
-MYSQL_HOST=localhost
-MYSQL_PORT=3306
-MYSQL_USER=root
-MYSQL_PASSWORD=password
-MYSQL_DATABASE=document_management
+## 🔒 安全特性
 
-# Milvus向量数据库配置
-MILVUS_HOST=localhost
-MILVUS_PORT=19530
-ENABLE_VECTOR_SERVICE=true
-
-# MinIO对象存储配置
-MINIO_ENDPOINT=localhost:9000
-MINIO_ACCESS_KEY=minioadmin
-MINIO_SECRET_KEY=minioadmin
-MINIO_BUCKET=documents
-ENABLE_MINIO_SERVICE=true
-
-# 向量化配置
-EMBEDDING_MODEL=all-MiniLM-L6-v2
-DEFAULT_CHUNK_SIZE=1000
-DEFAULT_CHUNK_OVERLAP=200
-TOKENIZERS_PARALLELISM=false
-```
-
-### 系统配置项
-可在数据库`system_configs`表中动态调整：
-- `vectorization_enabled`: 是否启用向量化
-- `default_chunk_size`: 默认分段大小
-- `default_chunk_overlap`: 默认重叠长度
-- `minio_endpoint`: MinIO服务器地址
-- `minio_access_key`: MinIO访问密钥
-
-## 🛠️ 故障排除
-
-### 常见问题解决
-
-#### 1. Python版本兼容性问题
-**问题**: Python 3.13.3 与机器学习库不兼容
-**解决方案**: 
-```bash
-# 安装Python 3.12
-brew install python@3.12
-
-# 重新创建虚拟环境
-rm -rf .venv
-python3.12 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-#### 2. 向量化失败
-**问题**: "Cannot copy out of meta tensor; no data!"
-**解决方案**:
-```bash
-# 清理模型缓存
-rm -rf ~/.cache/torch/sentence_transformers
-rm -rf ~/.cache/huggingface
-
-# 设置环境变量
-export TOKENIZERS_PARALLELISM=false
-
-# 重启应用
-python run.py
-```
-
-#### 3. 前端显示"undefined"
-**问题**: 文本块显示undefined
-**解决方案**: 已在`app/static/js/app.js`中添加null检查
-
-#### 4. Milvus连接问题
-**检查步骤**:
-```bash
-# 测试连接
-python setup_milvus.py
-
-# 检查配置
-grep MILVUS config.env
-
-# 查看日志
-tail -f app.log | grep -i milvus
-```
-
-#### 5. 数据库连接问题
-**检查步骤**:
-```bash
-# 测试MySQL连接
-mysql -h $MYSQL_HOST -u $MYSQL_USER -p
-
-# 检查表结构
-mysql -h $MYSQL_HOST -u $MYSQL_USER -p $MYSQL_DATABASE -e "SHOW TABLES;"
-```
-
-### 日志检查
-```bash
-# 查看应用日志
-tail -f app.log
-
-# 过滤特定错误
-grep -i "error\|failed" app.log
-
-# 查看向量化相关日志
-grep -i "vector\|embedding" app.log
-```
-
-## 📊 性能优化
-
-### 推荐配置
-- **分段大小**: 1000-2000字符（平衡检索精度和性能）
-- **重叠长度**: 10-20%的分段大小
-- **批量处理**: 避免同时处理大量文档
-
-### 处理能力
-- **小文档** (< 10页): 2-5秒
-- **中文档** (10-50页): 5-15秒
-- **大文档** (50+页): 15-60秒
-
-### 资源使用
-- **内存**: ~100MB per document
-- **存储**: 原文件 + 向量数据
-- **CPU**: 处理期间中等负载
-
-## 🔧 开发指南
-
-### 添加新文件类型支持
-
-1. **创建新的向量化器**:
-```python
-from .base_vectorizer import BaseVectorizer
-
-class NewFileVectorizer(BaseVectorizer):
-    def __init__(self):
-        super().__init__()
-        self.file_type = "newtype"
-    
-    def get_supported_extensions(self):
-        return ['.ext1', '.ext2']
-    
-    def extract_text(self, file_path):
-        # 实现文本提取逻辑
-        pass
-    
-    def chunk_text(self, text, chunk_size=1000, overlap=200):
-        # 实现文本分块逻辑
-        pass
-```
-
-2. **注册到工厂**:
-```python
-# 在vectorization_factory.py中注册
-factory.register_vectorizer('newtype', NewFileVectorizer)
-```
-
-### 扩展API接口
-```python
-# 在routes中添加新的端点
-@vectorize_bp.route('/api/vectorize/custom/<int:doc_id>', methods=['POST'])
-def custom_vectorize(doc_id):
-    # 自定义向量化逻辑
-    pass
-```
-
-## 📚 技术栈详情
-
-### 后端依赖
-```txt
-Flask==3.0.0                    # Web框架
-SQLAlchemy==2.0.23             # ORM
-PyMySQL==1.1.0                 # MySQL驱动
-pymilvus==2.5.10               # Milvus客户端
-sentence-transformers==4.1.0   # 文本嵌入
-torch==2.2.2                   # 深度学习框架
-PyMuPDF==1.23.8               # PDF处理
-pdfplumber==0.10.3            # PDF文本提取
-pytesseract==0.3.10           # OCR
-python-docx==1.1.0            # Word文档处理
-pandas==2.1.4                 # Excel处理
-opencv-python==4.8.1.78      # 视频处理
-easyocr==1.7.0                # OCR备选方案
-minio==7.2.0                  # 对象存储客户端
-```
-
-### 前端技术
-- **Bootstrap 5**: 响应式UI框架
-- **Vanilla JavaScript**: 原生JS，无额外依赖
-- **Font Awesome**: 图标库
-
-## 🎯 后续计划
-
-### v1.1 计划
-- [ ] 批量向量化功能
-- [ ] 向量化任务队列
-- [ ] 高级搜索过滤器
-- [ ] 文档相似度分析
-
-### v1.2 计划
-- [ ] 多语言支持
-- [ ] 用户权限管理
-- [ ] API认证和授权
-- [ ] 性能监控面板
-
-### v2.0 计划
-- [ ] 微服务架构重构
-- [ ] 分布式向量存储
-- [ ] 机器学习模型优化
-- [ ] 企业级部署方案
-
-## 📄 许可证
-
-本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
-
-## 🤝 贡献指南
-
-1. Fork 本项目
-2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 开启 Pull Request
-
-## 📞 支持与反馈
-
-如果您在使用过程中遇到问题或有改进建议，请：
-
-1. 查看本文档的故障排除部分
-2. 检查应用日志文件
-3. 提交 Issue 或 Pull Request
+- **文件类型检查**：严格的文件格式验证
+- **路径安全**：防止目录遍历攻击
+- **输入验证**：全面的用户输入验证
+- **错误处理**：安全的错误信息提示
 
 ---
 
-**注意**: 向量化功能是可选的，即使不安装Milvus和MinIO，系统的基础文档管理功能仍然可以正常工作。 
+**系统版本**: v2.0  
+**最后更新**: 2025年6月  
+**技术支持**: 集成智能文档管理系统 

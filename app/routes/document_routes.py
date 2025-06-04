@@ -1,7 +1,8 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, send_file, abort
 from app import db
 from app.models import DocumentNode, SystemConfig
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -337,9 +338,57 @@ def _would_create_cycle(node_id, target_parent_id):
     return False
 
 def _mark_children_deleted(parent_id):
-    """递归标记子项为删除状态"""
+    """递归标记子节点为已删除"""
     children = DocumentNode.query.filter_by(parent_id=parent_id, is_deleted=False).all()
     for child in children:
         child.is_deleted = True
         if child.type == 'folder':
-            _mark_children_deleted(child.id) 
+            _mark_children_deleted(child.id)
+
+@document_bp.route('/<int:doc_id>/download', methods=['GET'])
+def download_document(doc_id):
+    """下载文档原文件"""
+    try:
+        logger.info(f"开始处理文档下载请求 - 文档ID: {doc_id}")
+        
+        # 获取文档信息
+        document = DocumentNode.query.get_or_404(doc_id)
+        logger.info(f"找到文档: {document.name}, 类型: {document.file_type}")
+        
+        if document.is_deleted or document.type != 'file':
+            logger.warning(f"文档已删除或不是文件 - ID: {doc_id}")
+            abort(404)
+        
+        # 检查文件是否存在
+        logger.info(f"检查文件路径: {document.file_path}")
+        if not document.file_path or not os.path.exists(document.file_path):
+            logger.error(f"文件不存在: {document.file_path}")
+            abort(404)
+        
+        logger.info(f"文件存在，准备下载: {document.file_path}")
+        
+        try:
+            # 使用绝对路径
+            abs_path = os.path.abspath(document.file_path)
+            logger.info(f"使用绝对路径: {abs_path}")
+            
+            # 设置下载文件名为原始文件名
+            download_name = document.name
+            
+            return send_file(
+                abs_path, 
+                as_attachment=True,
+                download_name=download_name,
+                mimetype=document.mime_type
+            )
+            
+        except Exception as send_error:
+            logger.error(f"send_file失败: {send_error}")
+            raise
+        
+    except Exception as e:
+        logger.error(f"文档下载失败 - 文档ID: {doc_id}, 错误: {str(e)}")
+        logger.error(f"错误详情: {type(e).__name__}: {str(e)}")
+        import traceback
+        logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+        abort(500) 

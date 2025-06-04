@@ -62,12 +62,12 @@ def create_app(config_name=None):
     app.register_blueprint(vectorize_bp, url_prefix='/api/vectorize')
     app.register_blueprint(preview_bp, url_prefix='/api/preview')
     
-    # 注册主页路由
+    # 注册主页路由 - 重定向到语义搜索
     @app.route('/')
     def index():
-        return app.send_static_file('index.html')
+        return app.send_static_file('semantic_search.html')
     
-    # 语义检索页面路由
+    # 语义搜索页面路由（保持兼容性）
     @app.route('/semantic-search')
     def semantic_search_page():
         return app.send_static_file('semantic_search.html')

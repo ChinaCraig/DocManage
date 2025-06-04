@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>智能文档语义检索</title>
+    <title>智能文档管理与语义检索系统</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -21,16 +21,59 @@
             padding: 0;
         }
 
+        /* 顶部导航栏 */
+        .top-navbar {
+            height: 60px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            color: white;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .navbar-title {
+            font-size: 20px;
+            font-weight: 600;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .navbar-stats {
+            margin-left: auto;
+            display: flex;
+            gap: 20px;
+            font-size: 14px;
+        }
+
+        .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            padding: 5px 12px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+        }
+
+        /* 侧边栏 */
         .sidebar {
-            height: 100vh;
+            height: calc(100vh - 60px);
             background: linear-gradient(180deg, #ffffff 0%, #f8f9fa 100%);
             border-right: 1px solid #e0e0e0;
             box-shadow: 2px 0 10px rgba(0,0,0,0.1);
-            overflow-y: auto;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            min-width: 300px;
+            max-width: 450px;
         }
 
-        .sidebar-header {
-            padding: 20px 15px 15px;
+        /* 管理工具栏 */
+        .management-toolbar {
+            padding: 15px;
             border-bottom: 1px solid #e0e0e0;
             background: #fff;
             position: sticky;
@@ -38,39 +81,317 @@
             z-index: 10;
         }
 
-        .sidebar-title {
-            font-size: 18px;
+        .toolbar-title {
+            font-size: 16px;
             font-weight: 600;
             color: #2c3e50;
-            margin: 0;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
 
-        .file-tree {
+        .toolbar-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .toolbar-btn {
+            padding: 8px 12px;
+            border: none;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .btn-primary-custom {
+            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+            color: white;
+        }
+
+        .btn-success-custom {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+        }
+
+        .btn-warning-custom {
+            background: linear-gradient(135deg, #ffc107 0%, #fd7e14 100%);
+            color: white;
+        }
+
+        .toolbar-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+
+        /* 搜索框 */
+        .search-container {
             padding: 15px;
-            height: calc(100vh - 80px);
-            overflow-y: auto;
+            border-bottom: 1px solid #e0e0e0;
+            background: #fff;
+        }
+
+        .search-input-group {
+            position: relative;
+        }
+
+        .search-input {
+            border: 2px solid #e9ecef;
+            border-radius: 25px;
+            padding: 12px 20px 12px 45px;
+            font-size: 14px;
+            width: 100%;
+            transition: all 0.3s ease;
+        }
+
+        .search-input:focus {
+            border-color: #007bff;
+            box-shadow: 0 0 0 0.2rem rgba(0,123,255,0.25);
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #6c757d;
+            pointer-events: none;
+        }
+
+        .search-clear {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #6c757d;
+            cursor: pointer;
+            display: none;
+        }
+
+        /* 文档树 */
+        .file-tree {
+            flex: 1;
+            padding: 15px;
+            overflow: auto;
+            min-width: 0;
+            position: relative;
+        }
+
+        /* 文档树连线样式 */
+        .tree-node {
+            position: relative;
+            min-width: max-content;
+        }
+
+        .tree-node::before {
+            content: '';
+            position: absolute;
+            left: 9px;
+            top: 0;
+            bottom: 0;
+            width: 1px;
+            background: #d6d8db;
+            z-index: 0;
+        }
+
+        .tree-node::after {
+            content: '';
+            position: absolute;
+            left: 9px;
+            top: 22px;
+            width: 35px;
+            height: 1px;
+            background: #d6d8db;
+            z-index: 0;
+        }
+
+        .tree-node:last-child::before {
+            height: 22px;
+        }
+
+        .tree-children .tree-node {
+            margin-left: 30px;
+        }
+
+        .tree-children .tree-node::before {
+            left: -21px;
+        }
+
+        .tree-children .tree-node::after {
+            left: -21px;
+            width: 45px;
         }
 
         .tree-item {
             cursor: pointer;
-            padding: 8px 12px;
-            border-radius: 6px;
-            margin: 2px 0;
+            padding: 10px 12px;
+            border-radius: 8px;
+            margin: 3px 0;
             transition: all 0.2s ease;
             display: flex;
             align-items: center;
             font-size: 14px;
+            position: relative;
+            z-index: 1;
+            background: #fff;
+            overflow: visible;
+            min-height: 40px;
+            min-width: max-content;
+            white-space: nowrap;
+        }
+
+        .tree-item .tree-item-content {
+            display: flex;
+            align-items: center;
+            flex: 1;
+            min-width: 0;
+        }
+
+        .tree-item .tree-item-text {
+            flex: 0 1 auto;
+            min-width: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-left: 8px;
+            max-width: 200px;
+        }
+
+        .tree-item .tree-item-size {
+            flex-shrink: 0;
+            margin-left: 8px;
+            font-size: 11px;
+            color: #6c757d;
+            white-space: nowrap;
         }
 
         .tree-item:hover {
             background-color: #e8f4fd;
-            transform: translateX(2px);
+            transform: translateX(3px);
         }
 
         .tree-item.selected {
             background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
             color: white;
-            box-shadow: 0 2px 8px rgba(0,123,255,0.3);
+            box-shadow: 0 3px 10px rgba(0,123,255,0.3);
+        }
+
+        .tree-item i {
+            margin-right: 10px;
+            width: 18px;
+            text-align: center;
+            font-size: 16px;
+        }
+
+        /* 文档树展开/折叠功能 */
+        .tree-item.has-children {
+            position: relative;
+            padding-left: 35px;
+        }
+
+        .tree-expand-btn {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 18px;
+            height: 18px;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            font-size: 12px;
+            color: #6c757d;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 3;
+            border-radius: 50%;
+            transition: all 0.2s ease;
+        }
+
+        .tree-expand-btn:hover {
+            color: #007bff;
+            background: rgba(0,123,255,0.1);
+            transform: translateY(-50%) scale(1.2);
+        }
+
+        .tree-expand-btn.expanded {
+            color: #007bff;
+        }
+
+        .tree-children {
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .tree-children.collapsed {
+            height: 0;
+            margin: 0;
+        }
+
+        /* 选中文件路径显示 */
+        .selected-path {
+            padding: 10px 15px;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-top: 1px solid #e0e0e0;
+            border-bottom: 1px solid #e0e0e0;
+            margin-top: auto;
+            font-size: 12px;
+            color: #6c757d;
+            min-height: 40px;
+            display: flex;
+            align-items: center;
+        }
+
+        .path-label {
+            font-weight: 600;
+            margin-right: 8px;
+            color: #495057;
+        }
+
+        .path-text {
+            flex: 1;
+            word-break: break-all;
+            line-height: 1.4;
+        }
+
+        .path-clear {
+            margin-left: 8px;
+            color: #6c757d;
+            cursor: pointer;
+            font-size: 14px;
+            padding: 2px;
+            border-radius: 3px;
+            transition: all 0.2s ease;
+        }
+
+        .path-clear:hover {
+            color: #dc3545;
+            background: rgba(220, 53, 69, 0.1);
+        }
+
+        /* 搜索高亮 */
+        .highlight {
+            background-color: #fff3cd;
+            color: #856404;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-weight: 600;
+        }
+
+        .tree-item.search-match {
+            border-left: 3px solid #ffc107;
+            background-color: #fff3cd;
+        }
+
+        .tree-item.search-match:hover {
+            background-color: #ffeaa7;
         }
 
         .tree-item.highlight {
@@ -85,80 +406,439 @@
             100% { transform: scale(1); }
         }
 
-        .tree-item i {
-            margin-right: 8px;
-            width: 16px;
-            text-align: center;
+        /* 右键菜单 */
+        .context-menu {
+            position: fixed;
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            padding: 5px 0;
+            z-index: 1000;
+            display: none;
         }
 
-        .content-area {
-            height: 100vh;
+        .context-menu-item {
+            padding: 10px 15px;
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: background-color 0.2s ease;
+        }
+
+        .context-menu-item:hover {
+            background-color: #f8f9fa;
+        }
+
+        .context-menu-item.danger:hover {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+
+        /* 主内容区域 */
+        .main-content {
+            height: calc(100vh - 60px);
             display: flex;
             flex-direction: column;
             background: #fff;
         }
 
-        .document-preview {
+        /* 主内容布局 */
+        .main-layout {
             flex: 1;
-            border-bottom: 1px solid #e0e0e0;
-            position: relative;
-            background: #fff;
-            height: 65vh;
-            overflow: auto;
+            display: flex;
+            flex-direction: column;
+            height: calc(100vh - 60px);
         }
 
+        /* 上部分：文档预览区域 */
+        .preview-section {
+            flex: 1;
+            display: flex;
+            min-height: 350px;
+            margin-bottom: 15px;
+        }
+
+        /* 文档预览面板 */
+        .document-preview-panel {
+            flex: 1;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 当向量化信息显示时，预览面板收缩 */
+        .document-preview-panel.vectorization-active {
+            flex: 0 0 50%;
+            margin-right: 15px;
+        }
+
+        /* 向量化信息面板 */
+        .vectorization-panel {
+            flex: 0 0 48%;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: none;
+            flex-direction: column;
+        }
+
+        .vectorization-panel.active {
+            display: flex;
+        }
+
+        /* 下部分：聊天检索区域 */
+        .chat-section {
+            flex: 0 0 300px;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 预览区域样式 */
         .preview-header {
             padding: 15px 20px;
             background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-            border-bottom: 1px solid #e0e0e0;
-            position: sticky;
-            top: 0;
-            z-index: 5;
+            border-bottom: 1px solid #e9ecef;
+            border-radius: 8px 8px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
 
         .preview-title {
+            margin: 0;
+            color: #495057;
             font-size: 16px;
             font-weight: 600;
-            color: #2c3e50;
-            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* 预览操作按钮 */
+        .preview-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .preview-action-btn {
+            padding: 6px 12px;
+            border: 1px solid;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            text-decoration: none;
+            background: white;
+        }
+
+        .preview-action-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 3px 8px rgba(0,0,0,0.2);
+        }
+
+        .preview-action-btn.btn-download {
+            color: #0d6efd;
+            border-color: #0d6efd;
+        }
+
+        .preview-action-btn.btn-download:hover {
+            background-color: #0d6efd;
+            color: white;
+        }
+
+        .preview-action-btn.btn-edit {
+            color: #fd7e14;
+            border-color: #fd7e14;
+        }
+
+        .preview-action-btn.btn-edit:hover {
+            background-color: #fd7e14;
+            color: white;
+        }
+
+        .preview-action-btn.btn-delete {
+            color: #dc3545;
+            border-color: #dc3545;
+        }
+
+        .preview-action-btn.btn-delete:hover {
+            background-color: #dc3545;
+            color: white;
+        }
+
+        .preview-action-btn.btn-vectorize {
+            color: #198754;
+            border-color: #198754;
+        }
+
+        .preview-action-btn.btn-vectorize:hover {
+            background-color: #198754;
+            color: white;
+        }
+
+        .preview-action-btn.btn-vectorize.active {
+            background-color: #198754;
+            color: white;
         }
 
         .preview-content {
+            flex: 1;
             padding: 20px;
-            height: calc(65vh - 60px);
+            overflow: hidden;
+            min-height: 200px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 预览内容区域 */
+        .preview-main-content {
+            flex: 1;
+            overflow: auto;
+            margin-bottom: 15px;
+        }
+
+        /* 文档信息固定在底部 */
+        .document-info-section {
+            flex-shrink: 0;
+            margin-top: auto;
+        }
+
+        /* 向量化面板样式 */
+        .vector-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .vector-panel-header {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            padding: 12px 15px;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .vector-panel-header h6 {
+            margin: 0;
+            color: #495057;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .vector-panel-content {
+            flex: 1;
+            padding: 15px;
             overflow: auto;
         }
 
-        .chat-area {
-            height: 35vh;
-            background: #fff;
-            display: flex;
-            flex-direction: column;
-            border-top: 2px solid #e9ecef;
-        }
-
+        /* 聊天区域样式 */
         .chat-header {
             padding: 12px 20px;
-            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
-            color: white;
-            font-weight: 600;
+            background: linear-gradient(135deg, #e8f4fd 0%, #d1ecf1 100%);
+            border-bottom: 1px solid #bee5eb;
+            border-radius: 8px 8px 0 0;
+        }
+
+        .chat-title {
+            margin: 0;
+            color: #0c5460;
             font-size: 14px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
 
         .chat-messages {
             flex: 1;
-            padding: 15px 20px;
+            padding: 15px;
             overflow-y: auto;
-            background: #f8f9fa;
-            height: calc(35vh - 120px);
+            min-height: 150px;
+            max-height: 200px;
         }
 
         .chat-input-area {
-            padding: 15px 20px;
-            background: #fff;
-            border-top: 1px solid #e0e0e0;
+            padding: 12px 15px;
+            border-top: 1px solid #e9ecef;
+            background: #f8f9fa;
+            border-radius: 0 0 8px 8px;
         }
 
+        /* 文档详情按钮样式 */
+        .detail-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .detail-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #2c3e50;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .detail-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .action-btn {
+            padding: 8px 12px;
+            border: 1px solid;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            text-decoration: none;
+            background: white;
+        }
+
+        .action-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 3px 8px rgba(0,0,0,0.2);
+        }
+
+        .action-btn.btn-outline-primary {
+            color: #0d6efd;
+            border-color: #0d6efd;
+        }
+
+        .action-btn.btn-outline-primary:hover {
+            background-color: #0d6efd;
+            color: white;
+        }
+
+        .action-btn.btn-outline-success {
+            color: #198754;
+            border-color: #198754;
+        }
+
+        .action-btn.btn-outline-success:hover {
+            background-color: #198754;
+            color: white;
+        }
+
+        .action-btn.btn-outline-warning {
+            color: #fd7e14;
+            border-color: #fd7e14;
+        }
+
+        .action-btn.btn-outline-warning:hover {
+            background-color: #fd7e14;
+            color: white;
+        }
+
+        .action-btn.btn-outline-danger {
+            color: #dc3545;
+            border-color: #dc3545;
+        }
+
+        .action-btn.btn-outline-danger:hover {
+            background-color: #dc3545;
+            color: white;
+        }
+
+        .action-btn.btn-outline-secondary {
+            color: #6c757d;
+            border-color: #6c757d;
+        }
+
+        .action-btn.btn-outline-secondary:hover {
+            background-color: #6c757d;
+            color: white;
+        }
+
+        /* 文件类型图标颜色 */
+        .icon-pdf { color: #dc3545; }
+        .icon-word { color: #0d6efd; }
+        .icon-excel { color: #198754; }
+        .icon-image { color: #fd7e14; }
+        .icon-video { color: #6f42c1; }
+        .icon-folder { color: #ffc107; }
+        .icon-file { color: #6c757d; }
+
+        /* 向量化分段样式 */
+        .vector-chunks-header {
+            border-bottom: 1px solid #e9ecef;
+            padding-bottom: 10px;
+        }
+
+        .vector-chunks-header h6 {
+            margin: 0;
+            color: #495057;
+            font-weight: 600;
+        }
+
+        .vector-chunk-item {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            overflow: hidden;
+        }
+
+        .vector-chunk-header {
+            background: #e9ecef;
+            padding: 8px 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .vector-chunk-index {
+            font-size: 12px;
+            font-weight: 600;
+            color: #495057;
+        }
+
+        .vector-chunk-actions {
+            display: flex;
+            gap: 4px;
+        }
+
+        .vector-chunk-content {
+            padding: 12px;
+            background: white;
+            font-size: 13px;
+            line-height: 1.5;
+            color: #495057;
+            max-height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+
+        .vector-chunk-content:hover {
+            background: #f8f9fa;
+        }
+
+        /* 消息样式 */
         .message {
             margin-bottom: 15px;
             display: flex;
@@ -192,6 +872,7 @@
             margin-top: 5px;
         }
 
+        /* 输入区域样式 */
         .chat-input {
             border: 2px solid #e9ecef;
             border-radius: 25px;
@@ -221,14 +902,15 @@
             box-shadow: 0 4px 12px rgba(0,123,255,0.4);
         }
 
+        /* 加载状态 */
         .loading {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #007bff;
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #007bff;
             border-radius: 50%;
             animation: spin 1s linear infinite;
+            margin: 20px auto;
         }
 
         @keyframes spin {
@@ -236,6 +918,13 @@
             100% { transform: rotate(360deg); }
         }
 
+        .loading-placeholder {
+            text-align: center;
+            padding: 40px 20px;
+            color: #6c757d;
+        }
+
+        /* 空状态样式 */
         .empty-state {
             text-align: center;
             padding: 40px 20px;
@@ -248,251 +937,86 @@
             opacity: 0.5;
         }
 
-        .highlight-text {
-            background: linear-gradient(120deg, #a8e6cf 0%, #dcedc1 50%, #ffd3a5 100%);
-            padding: 2px 4px;
-            border-radius: 3px;
-            font-weight: 500;
-            animation: highlight-fade 3s ease-in-out;
-        }
-
-        @keyframes highlight-fade {
-            0% { background-color: #ffeb3b; }
-            50% { background-color: #ffc107; }
-            100% { background: linear-gradient(120deg, #a8e6cf 0%, #dcedc1 50%, #ffd3a5 100%); }
-        }
-
-        .search-results-info {
-            background: #e3f2fd;
-            border: 1px solid #bbdefb;
-            border-radius: 8px;
-            padding: 10px 15px;
-            margin-bottom: 15px;
-            font-size: 13px;
-            color: #1565c0;
-        }
-
-        /* 文件类型图标颜色 */
-        .icon-pdf { color: #dc3545; }
-        .icon-word { color: #0d6efd; }
-        .icon-excel { color: #198754; }
-        .icon-image { color: #fd7e14; }
-        .icon-video { color: #6f42c1; }
-        .icon-folder { color: #ffc107; }
-        .icon-file { color: #6c757d; }
-
-        /* 搜索框样式 */
-        .tree-search {
-            padding: 10px 15px;
-            border-bottom: 1px solid #e0e0e0;
-        }
-
-        .search-input {
-            border: 1px solid #e0e0e0;
-            border-radius: 20px;
-            padding: 8px 15px 8px 35px;
-            font-size: 13px;
-            transition: all 0.3s ease;
-            width: 100%;
-        }
-
-        .search-input:focus {
-            border-color: #007bff;
-            box-shadow: 0 0 0 0.2rem rgba(0,123,255,0.15);
-        }
-
-        .search-icon {
-            position: absolute;
-            left: 12px;
-            top: 50%;
-            transform: translateY(-50%);
-            color: #6c757d;
-            pointer-events: none;
-        }
-
-        .search-clear {
-            position: absolute;
-            right: 12px;
-            top: 50%;
-            transform: translateY(-50%);
-            color: #6c757d;
-            cursor: pointer;
-            display: none;
-        }
-
-        .search-clear:hover {
-            color: #007bff;
-        }
-
-        /* 文档树折叠样式 */
-        .tree-item.folder-item {
-            position: relative;
-        }
-
-        .folder-toggle {
-            position: absolute;
-            left: 5px;
-            width: 16px;
-            height: 16px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            font-size: 10px;
-            color: #6c757d;
-            transition: transform 0.2s ease;
-        }
-
-        .folder-toggle.expanded {
-            transform: rotate(90deg);
-        }
-
-        .tree-item.has-children {
-            padding-left: 30px;
-        }
-
-        .tree-children {
-            display: block;
-            transition: all 0.3s ease;
-        }
-
-        .tree-children.collapsed {
-            display: none;
-        }
-
-        .tree-item.filtered-hidden {
-            display: none;
-        }
-
-        .no-results {
-            text-align: center;
-            padding: 20px;
-            color: #6c757d;
-            font-size: 14px;
-        }
-
-        /* 路径显示样式 */
-        .path-display {
-            padding: 10px 15px;
-            border-bottom: 1px solid #e0e0e0;
-            background: #f8f9fa;
-            font-size: 12px;
-            color: #6c757d;
-            min-height: 40px;
-            display: flex;
-            align-items: center;
-        }
-
-        .path-display.hidden {
-            display: none;
-        }
-
-        .path-breadcrumb {
-            display: flex;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 5px;
-        }
-
-        .path-item {
-            display: flex;
-            align-items: center;
+        .empty-state h4 {
+            margin-bottom: 10px;
             color: #495057;
-            font-size: 12px;
         }
 
-        .path-item:first-child {
-            color: #007bff;
-            font-weight: 500;
+        .empty-state p {
+            margin-bottom: 5px;
         }
 
-        .path-item:last-child {
-            color: #28a745;
-            font-weight: 600;
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .navbar-stats {
+                display: none;
+            }
+            
+            .mode-switcher {
+                flex-direction: column;
+                gap: 10px;
+                align-items: stretch;
+            }
+            
+            .toolbar-actions {
+                flex-direction: column;
+            }
         }
 
-        .path-separator {
-            color: #adb5bd;
-            margin: 0 3px;
-            font-size: 10px;
+        /* Toast 通知系统 */
+        .toast-container {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            z-index: 1055;
         }
 
-        .path-icon {
-            width: 12px;
-            margin-right: 4px;
-            font-size: 10px;
-        }
-
-        .path-item.clickable {
-            cursor: pointer;
-            padding: 2px 6px;
-            border-radius: 4px;
-            transition: background-color 0.2s ease;
-        }
-
-        .path-item.clickable:hover {
-            background-color: #e9ecef;
-            color: #007bff;
-        }
-
-        /* PDF预览样式 */
-        .pdf-content {
-            font-family: Georgia, 'Times New Roman', serif;
-            line-height: 1.6;
-            color: #333;
-        }
-
-        .page-header {
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-            border-left: 4px solid #007bff;
-            padding: 8px 12px;
-            margin: 20px 0 15px 0;
-            font-weight: 600;
-            font-size: 14px;
-            color: #495057;
-            border-radius: 4px;
-        }
-
-        .pdf-paragraph {
-            margin-bottom: 15px;
-            text-align: justify;
-            background: #fff;
-            padding: 12px 16px;
-            border-radius: 6px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            border-left: 2px solid #e9ecef;
-        }
-
-        .pdf-paragraph:hover {
-            border-left-color: #007bff;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
-        }
-
-        .preview-text {
-            max-height: calc(65vh - 120px);
-            overflow-y: auto;
-        }
-
-        /* PDF iframe预览样式 */
-        .pdf-container {
-            height: calc(65vh - 140px);
-            border: 1px solid #e0e0e0;
-            border-radius: 6px;
-            overflow: hidden;
-        }
-
-        .pdf-iframe {
-            width: 100%;
-            height: 100%;
+        .toast {
+            margin-bottom: 10px;
             border: none;
-            border-radius: 6px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            max-width: 350px;
         }
 
-        .pdf-text-container {
-            height: calc(65vh - 140px);
-            overflow-y: auto;
+        .toast.success {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
         }
 
+        .toast.error {
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+            color: white;
+        }
+
+        .toast.warning {
+            background: linear-gradient(135deg, #ffc107 0%, #fd7e14 100%);
+            color: white;
+        }
+
+        .toast.info {
+            background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
+            color: white;
+        }
+
+        .toast-icon {
+            margin-right: 8px;
+            font-size: 16px;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateX(0);
+            transition: all 0.3s ease;
+        }
+
+        .toast.hide {
+            opacity: 0;
+            transform: translateX(100%);
+            transition: all 0.3s ease;
+        }
+
+        /* 加载状态样式 */
         .loading-placeholder {
             display: flex;
             flex-direction: column;
@@ -506,237 +1030,496 @@
             margin-bottom: 10px;
         }
 
-        .text-preview-info {
-            background: #f8f9fa;
-            border: 1px solid #e9ecef;
-            border-radius: 6px;
-            padding: 10px 15px;
-            font-size: 13px;
-        }
-
         /* Office文档预览样式 */
-        .office-container {
-            height: calc(65vh - 140px);
-            border: 1px solid #e0e0e0;
-            border-radius: 6px;
-            overflow: hidden;
-        }
-
-        .office-iframe {
+        .office-preview iframe {
             width: 100%;
-            height: 100%;
+            height: 600px;
             border: none;
-            border-radius: 6px;
+            border-radius: 8px;
         }
 
-        .office-text-container,
-        .office-data-container {
-            height: calc(65vh - 140px);
-            overflow-y: auto;
-        }
-
-        .office-content {
-            background: #fff;
+        /* 文档管理区域样式 */
+        .document-management {
+            height: calc(100vh - 110px);
+            display: flex;
+            flex-direction: column;
             padding: 15px;
-            border-radius: 6px;
-            line-height: 1.6;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
 
-        /* Excel表格样式 */
-        .excel-sheet {
-            margin-bottom: 20px;
+        .management-top-area {
+            flex: 1;
+            min-height: 350px;
+            border-bottom: 1px solid #e9ecef;
+            margin-bottom: 15px;
         }
 
-        .sheet-title {
-            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
-            color: white;
-            padding: 8px 12px;
-            margin: 0 0 10px 0;
-            border-radius: 6px;
+        .preview-panel, .vector-panel {
+            background: #fff;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .preview-panel-header, .vector-panel-header {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            padding: 12px 15px;
+            border-bottom: 1px solid #e9ecef;
+            border-radius: 8px 8px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .preview-panel-header h6, .vector-panel-header h6 {
+            margin: 0;
+            color: #495057;
             font-size: 14px;
+            font-weight: 600;
         }
 
-        .excel-data-content .table {
-            font-size: 12px;
+        .preview-panel-content, .vector-panel-content {
+            flex: 1;
+            padding: 15px;
+            overflow: auto;
+        }
+
+        /* 压缩的文档详情样式 - 确保在底部且空间最小 */
+        .document-detail-compact {
+            background: #fff;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 12px 15px;
+            margin-top: auto;
+            flex-shrink: 0;
+            max-height: 150px;
+            min-height: 120px;
+        }
+
+        .document-detail-compact .card {
+            border: none;
+            box-shadow: none;
+        }
+
+        .document-detail-compact .card-body {
+            padding: 0;
+        }
+
+        .document-detail-compact .detail-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .document-detail-compact .detail-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .document-detail-compact .detail-actions {
+            display: flex;
+            gap: 6px;
+        }
+
+        .document-detail-compact .detail-actions .action-btn {
+            font-size: 11px;
+            padding: 3px 6px;
+        }
+
+        /* 横向排列的文档信息 - 更紧凑 */
+        .document-detail-compact .document-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 8px;
             margin-bottom: 0;
         }
 
-        .excel-data-content .table td {
-            padding: 4px 8px;
-            vertical-align: top;
-            max-width: 200px;
-            word-wrap: break-word;
+        .document-detail-compact .info-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
         }
 
-        .excel-data-content .table-responsive {
-            max-height: 400px;
-            overflow-y: auto;
+        .document-detail-compact .info-label {
+            font-weight: 600;
+            color: #6c757d;
+            min-width: 45px;
         }
 
-        /* 滚动条样式 */
-        ::-webkit-scrollbar {
-            width: 6px;
-        }
-
-        ::-webkit-scrollbar-track {
-            background: #f1f1f1;
-            border-radius: 3px;
-        }
-
-        ::-webkit-scrollbar-thumb {
-            background: #c1c1c1;
-            border-radius: 3px;
-        }
-
-        ::-webkit-scrollbar-thumb:hover {
-            background: #a8a8a8;
-        }
-
-        /* Word图片预览样式 */
-        .word-images-section {
-            border-top: 1px solid #e9ecef;
-            padding-top: 20px;
-            margin-top: 20px;
-        }
-
-        .word-image {
-            transition: all 0.3s ease;
-            border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-
-        .word-image:hover {
-            transform: scale(1.05);
-            box-shadow: 0 4px 16px rgba(0,0,0,0.2);
-        }
-
-        .word-images-section .card {
-            border: 1px solid #e9ecef;
-            transition: all 0.3s ease;
-            border-radius: 8px;
-            overflow: hidden;
-        }
-
-        .word-images-section .card:hover {
-            border-color: #007bff;
-            box-shadow: 0 4px 12px rgba(0,123,255,0.15);
-            transform: translateY(-2px);
-        }
-
-        .word-images-section .card-body {
-            background: #f8f9fa;
-            border-top: 1px solid #e9ecef;
-        }
-
-        /* Office文档内容样式 */
-        .office-content {
-            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-            line-height: 1.6;
+        .document-detail-compact .info-value {
             color: #333;
-            background: #fff;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
         }
 
-        .text-preview-info {
+        /* 向量化信息样式 */
+        .vector-chunk-item {
             background: #f8f9fa;
             border: 1px solid #e9ecef;
             border-radius: 6px;
-            padding: 10px 15px;
+            padding: 8px;
+            margin-bottom: 8px;
+        }
+
+        .vector-chunk-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+
+        .vector-chunk-index {
+            font-size: 11px;
+            font-weight: 600;
+            color: #6c757d;
+        }
+
+        .vector-chunk-actions {
+            display: flex;
+            gap: 4px;
+        }
+
+        .vector-chunk-actions .btn {
+            font-size: 10px;
+            padding: 2px 4px;
+        }
+
+        .vector-chunk-content {
+            font-size: 12px;
+            line-height: 1.4;
+            color: #333;
+            max-height: 80px;
+            overflow-y: auto;
+        }
+
+        .vector-chunk-content.editable {
+            background: #fff;
+            border: 1px solid #ddd;
+            padding: 5px;
+            border-radius: 4px;
+        }
+
+        .vector-edit-controls {
+            display: flex;
+            gap: 6px;
+            justify-content: flex-end;
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid #e9ecef;
+        }
+
+        .vector-edit-controls .btn {
+            font-size: 11px;
+            padding: 3px 6px;
+        }
+
+        /* 预览面板的特殊样式 - 确保正确显示 */
+        .preview-panel-content iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            border-radius: 4px;
+            min-height: 300px;
+        }
+
+        .preview-panel-content img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            border-radius: 4px;
+            display: block;
+            margin: 0 auto;
+        }
+
+        .preview-panel-content video {
+            max-width: 100%;
+            max-height: 100%;
+            border-radius: 4px;
+            display: block;
+            margin: 0 auto;
+        }
+
+        /* 改进的预览容器 */
+        .preview-container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 300px;
+        }
+
+        .image-preview, .video-preview {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .pdf-preview iframe {
+            width: 100%;
+            height: 100%;
+            min-height: 350px;
+            border: none;
+            border-radius: 4px;
+        }
+
+        /* 文档信息显示样式 - 紧凑布局 */
+        .document-info-compact {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 12px;
+            margin-top: auto;
+        }
+
+        .document-info-compact .info-header {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 10px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .document-info-compact .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 8px;
+        }
+
+        .document-info-compact .info-item {
+            display: flex;
+            align-items: center;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+
+        .document-info-compact .info-item.info-description {
+            grid-column: 1 / -1;
+        }
+
+        .document-info-compact .label {
+            font-weight: 600;
+            color: #6c757d;
+            min-width: 60px;
+            margin-right: 6px;
+            flex-shrink: 0;
+        }
+
+        .document-info-compact .value {
+            color: #333;
+            flex: 1;
+            word-break: break-word;
+        }
+
+        /* 旧样式保留以防其他地方使用 */
+        .document-info-section .card {
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .document-info-section .card-header {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-bottom: 1px solid #e9ecef;
+            padding: 12px 15px;
+        }
+
+        .document-info-section .card-body {
+            padding: 15px;
+        }
+
+        .document-info-section .info-item {
+            display: flex;
+            align-items: center;
             font-size: 13px;
         }
 
-        .text-preview-info .text-muted {
-            color: #6c757d !important;
+        .document-info-section .info-label {
+            font-weight: 600;
+            color: #495057;
+            min-width: 80px;
+            margin-right: 8px;
         }
 
-        /* 模态框样式优化 */
-        .modal-body img {
-            max-width: 100%;
-            height: auto;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        .document-info-section .info-value {
+            color: #333;
+            flex: 1;
+            word-break: break-word;
         }
     </style>
 </head>
 <body>
+    <!-- 顶部导航栏 -->
+    <div class="top-navbar">
+        <h1 class="navbar-title">
+            <i class="bi bi-lightbulb"></i>
+            智能文档管理与语义检索系统
+        </h1>
+        <div class="navbar-stats">
+            <div class="stat-item">
+                <i class="bi bi-files"></i>
+                <span>文档: <strong id="totalDocs">0</strong></span>
+            </div>
+            <div class="stat-item">
+                <i class="bi bi-folder"></i>
+                <span>文件夹: <strong id="totalFolders">0</strong></span>
+            </div>
+            <div class="stat-item">
+                <i class="bi bi-vector-pen"></i>
+                <span>向量: <strong id="totalVectors">0</strong></span>
+            </div>
+        </div>
+    </div>
+
     <div class="container-fluid">
         <div class="row h-100">
-            <!-- 左侧文档树 -->
-            <div class="col-3 sidebar">
-                <div class="sidebar-header">
-                    <h5 class="sidebar-title">
-                        <i class="bi bi-folder-open"></i>
-                        文档树
-                    </h5>
-                </div>
-                <!-- 搜索框 -->
-                <div class="tree-search">
-                    <div class="position-relative">
-                        <i class="bi bi-search search-icon"></i>
-                        <input type="text" 
-                               class="search-input" 
-                               id="tree-search-input" 
-                               placeholder="搜索文档名称...">
-                        <i class="bi bi-x search-clear" id="search-clear"></i>
+            <!-- 左侧边栏 -->
+            <div class="col-md-3 p-0">
+                <div class="sidebar">
+                    <!-- 管理工具栏 -->
+                    <div class="management-toolbar">
+                        <div class="toolbar-title">
+                            <i class="bi bi-gear-fill"></i>
+                            文档管理
+                        </div>
+                        <div class="toolbar-actions">
+                            <button class="toolbar-btn btn-success-custom" onclick="showCreateFolderModal()">
+                                <i class="bi bi-folder-plus"></i>
+                                新建文件夹
+                            </button>
+                            <button class="toolbar-btn btn-primary-custom" onclick="showUploadModal()">
+                                <i class="bi bi-cloud-upload"></i>
+                                上传文件
+                            </button>
+                        </div>
                     </div>
-                </div>
-                <!-- 路径显示 -->
-                <div class="path-display hidden" id="path-display">
-                    <div class="path-breadcrumb" id="path-breadcrumb">
-                        <span class="text-muted">未选择文档</span>
+
+                    <!-- 搜索框 -->
+                    <div class="search-container">
+                        <div class="search-input-group">
+                            <i class="bi bi-search search-icon"></i>
+                            <input type="text" id="treeSearch" class="search-input" placeholder="搜索文档..." autocomplete="off">
+                            <i class="bi bi-x-circle search-clear" id="searchClear" onclick="clearTreeSearch()"></i>
+                        </div>
                     </div>
-                </div>
-                <div class="file-tree" id="file-tree">
-                    <!-- 文档树将在这里动态加载 -->
+
+                    <!-- 文档树 -->
+                    <div class="file-tree" id="fileTree">
+                        <div class="empty-state">
+                            <i class="bi bi-folder2-open"></i>
+                            <h5>暂无文档</h5>
+                            <p>点击上方按钮开始添加文档</p>
+                        </div>
+                    </div>
+
+                    <!-- 选中文件路径显示 -->
+                    <div class="selected-path" id="selectedPath">
+                        <span class="path-label">当前选择:</span>
+                        <span class="path-text" id="pathText">未选择任何文件</span>
+                        <i class="bi bi-x path-clear" id="pathClear" onclick="clearSelection()" style="display: none;" title="取消选择"></i>
+                    </div>
                 </div>
             </div>
 
-            <!-- 右侧内容区域 -->
-            <div class="col-9 content-area">
-                <!-- 文档预览区域 -->
-                <div class="document-preview">
-                    <div class="preview-header">
-                        <h6 class="preview-title" id="preview-title">
-                            <i class="bi bi-eye"></i>
-                            文档预览
-                        </h6>
-                    </div>
-                    <div class="preview-content" id="preview-content">
-                        <div class="empty-state">
-                            <i class="bi bi-file-earmark-text"></i>
-                            <p>请选择一个文档进行预览</p>
-                        </div>
-                    </div>
-                </div>
+            <!-- 主内容区域 -->
+            <div class="col-md-9 p-0">
+                <div class="main-content">
+                    <!-- 主内容布局 -->
+                    <div class="main-layout" id="mainLayout">
+                        <!-- 上部分：文档预览区域 -->
+                        <div class="preview-section" id="previewSection">
+                            <!-- 文档预览面板 -->
+                            <div class="document-preview-panel" id="documentPreviewPanel">
+                                <div class="preview-header">
+                                    <h6 class="preview-title" id="previewTitle">
+                                        <i class="bi bi-eye"></i>
+                                        文档预览
+                                    </h6>
+                                    <div class="preview-actions" id="previewActions" style="display: none;">
+                                        <button class="preview-action-btn btn-download" id="downloadBtn" onclick="downloadCurrentDocument()" title="下载文件">
+                                            <i class="bi bi-download"></i>
+                                            下载
+                                        </button>
+                                        <button class="preview-action-btn btn-edit" id="editBtn" onclick="editCurrentDocument()" title="编辑文件">
+                                            <i class="bi bi-pencil"></i>
+                                            编辑
+                                        </button>
+                                        <button class="preview-action-btn btn-delete" id="deleteBtn" onclick="deleteCurrentDocument()" title="删除文件">
+                                            <i class="bi bi-trash"></i>
+                                            删除
+                                        </button>
+                                        <button class="preview-action-btn btn-vectorize" id="vectorizeBtn" onclick="toggleVectorization()" title="向量化">
+                                            <i class="bi bi-vector-pen"></i>
+                                            向量化
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="preview-content" id="previewContent">
+                                    <div class="empty-state">
+                                        <i class="bi bi-file-earmark-text"></i>
+                                        <h4>文档预览</h4>
+                                        <p>请选择一个文档进行预览</p>
+                                        <small class="text-muted">支持PDF、Word、Excel、图片等多种格式</small>
+                                    </div>
+                                </div>
+                            </div>
 
-                <!-- 聊天区域 -->
-                <div class="chat-area">
-                    <div class="chat-header">
-                        <i class="bi bi-chat-dots"></i>
-                        智能语义检索
-                    </div>
-                    <div class="chat-messages" id="chat-messages">
-                        <div class="message assistant">
-                            <div class="message-content">
-                                <div>您好！我是您的智能文档助手。您可以用自然语言描述要查找的内容，我会在文档中为您精确定位相关信息。</div>
-                                <div class="message-time">系统消息</div>
+                            <!-- 向量化信息面板（隐藏状态） -->
+                            <div class="vectorization-panel" id="vectorizationPanel">
+                                <div class="vector-panel">
+                                    <div class="vector-panel-header">
+                                        <h6><i class="bi bi-vector-pen"></i> 向量分段信息</h6>
+                                        <button class="btn btn-sm btn-outline-secondary" onclick="closeVectorization()">
+                                            <i class="bi bi-x"></i> 关闭
+                                        </button>
+                                    </div>
+                                    <div class="vector-panel-content" id="vectorPanelContent">
+                                        <div class="empty-state">
+                                            <i class="bi bi-puzzle"></i>
+                                            <p>请先对文档进行向量化</p>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                    <div class="chat-input-area">
-                        <div class="input-group">
-                            <textarea 
-                                class="form-control chat-input" 
-                                id="chat-input" 
-                                placeholder="请输入您要查找的内容，比如：合同中关于违约责任的条款..."
-                                rows="2"></textarea>
-                            <button class="btn send-button" type="button" id="send-button">
-                                <i class="bi bi-send"></i>
-                            </button>
+
+                        <!-- 下部分：聊天检索区域 -->
+                        <div class="chat-section" id="chatSection">
+                            <div class="chat-header">
+                                <h6 class="chat-title">
+                                    <i class="bi bi-chat-dots"></i>
+                                    智能检索对话
+                                </h6>
+                            </div>
+                            <div class="chat-messages" id="chatMessages">
+                                <div class="empty-state">
+                                    <i class="bi bi-robot"></i>
+                                    <h4>智能检索助手</h4>
+                                    <p>请输入您想要查找的内容，我将为您智能检索相关文档</p>
+                                    <small class="text-muted">支持自然语言查询，如"关于合同的文档"</small>
+                                </div>
+                            </div>
+                            <div class="chat-input-area">
+                                <div class="input-group">
+                                    <input type="text" id="chatInput" class="form-control" placeholder="输入您要查找的内容..." maxlength="500">
+                                    <button class="btn btn-primary" id="sendButton" onclick="sendChatMessage()">
+                                        <i class="bi bi-send"></i>
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -744,7 +1527,258 @@
         </div>
     </div>
 
+    <!-- 右键菜单 -->
+    <div class="context-menu" id="contextMenu">
+        <div class="context-menu-item" onclick="previewSelectedDocument()">
+            <i class="bi bi-eye"></i>
+            预览
+        </div>
+        <div class="context-menu-item" onclick="downloadSelectedDocument()">
+            <i class="bi bi-download"></i>
+            下载
+        </div>
+        <div class="context-menu-item" onclick="editSelectedDocument()">
+            <i class="bi bi-pencil"></i>
+            编辑
+        </div>
+        <div class="context-menu-item" onclick="vectorizeSelectedDocument()">
+            <i class="bi bi-vector-pen"></i>
+            向量化
+        </div>
+        <div class="context-menu-item danger" onclick="deleteSelectedDocument()">
+            <i class="bi bi-trash"></i>
+            删除
+        </div>
+    </div>
+
+    <!-- Toast 通知容器 -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- 模态框引入 -->
+    <!-- 上传文件模态框 -->
+    <div class="modal fade" id="uploadModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-cloud-upload me-2"></i>上传文件
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- 上传类型选择 -->
+                    <div class="mb-3">
+                        <div class="btn-group" role="group">
+                            <input type="radio" class="btn-check" name="uploadType" id="uploadTypeFile" value="file" checked>
+                            <label class="btn btn-outline-primary" for="uploadTypeFile">
+                                <i class="bi bi-file-earmark-arrow-up"></i> 单个文件
+                            </label>
+                            <input type="radio" class="btn-check" name="uploadType" id="uploadTypeFolder" value="folder">
+                            <label class="btn btn-outline-primary" for="uploadTypeFolder">
+                                <i class="bi bi-folder-symlink"></i> 文件夹
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- 上传区域 -->
+                    <div class="upload-area border border-2 border-dashed rounded p-4 text-center" id="uploadArea">
+                        <i class="bi bi-cloud-upload" style="font-size: 3rem; color: #6c757d;"></i>
+                        <h5 class="mt-3">拖拽文件到此处或点击选择文件</h5>
+                        <p class="text-muted">支持 PDF, Word, Excel, 图片, 视频文件</p>
+                        <input type="file" id="fileInput" style="display: none;" 
+                               accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.bmp,.mp4,.avi,.mov,.wmv,.flv,.mkv">
+                        <input type="file" id="folderInput" style="display: none;" webkitdirectory directory multiple>
+                    </div>
+
+                    <!-- 文件列表预览 -->
+                    <div id="fileListPreview" style="display: none;" class="mt-3">
+                        <h6>选择的文件 (<span id="fileCount">0</span> 个文件，总大小 <span id="totalSize">0</span>)</h6>
+                        <div class="list-group" id="fileList" style="max-height: 200px; overflow-y: auto;"></div>
+                    </div>
+
+                    <!-- 描述 -->
+                    <div class="mt-3">
+                        <label for="fileDescription" class="form-label">描述 (可选)</label>
+                        <textarea class="form-control" id="fileDescription" rows="3" placeholder="为这批文件添加描述..."></textarea>
+                    </div>
+
+                    <!-- 上传进度 -->
+                    <div id="uploadProgress" style="display: none;" class="mt-3">
+                        <div class="d-flex align-items-center">
+                            <strong id="uploadStatus">正在上传...</strong>
+                            <div class="spinner-border spinner-border-sm ms-2" role="status"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" id="uploadBtn" onclick="uploadFile()">
+                        <i class="bi bi-upload"></i> 上传
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 创建文件夹模态框 -->
+    <div class="modal fade" id="createFolderModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-folder-plus me-2"></i>创建文件夹
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="folderName" class="form-label">文件夹名称</label>
+                        <input type="text" class="form-control" id="folderName" placeholder="输入文件夹名称">
+                    </div>
+                    <div class="mb-3">
+                        <label for="folderDescription" class="form-label">描述 (可选)</label>
+                        <textarea class="form-control" id="folderDescription" rows="3" placeholder="文件夹描述..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="createFolder()">
+                        <i class="bi bi-plus"></i> 创建
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 编辑文档模态框 -->
+    <div class="modal fade" id="editDocumentModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="editDocumentTitle">
+                        <i class="bi bi-pencil me-2"></i>编辑文档
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="editDocumentId">
+                    <div class="mb-3">
+                        <label for="editDocumentName" class="form-label">名称</label>
+                        <input type="text" class="form-control" id="editDocumentName" placeholder="输入文档名称">
+                    </div>
+                    <div class="mb-3">
+                        <label for="editDocumentDescription" class="form-label">描述</label>
+                        <textarea class="form-control" id="editDocumentDescription" rows="3" placeholder="文档描述..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="updateDocument()">
+                        <i class="bi bi-check"></i> 保存
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 确认删除模态框 -->
+    <div class="modal fade" id="confirmModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="confirmModalTitle">确认操作</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="confirmModalMessage">
+                    确定要执行此操作吗？
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-danger" id="confirmModalBtn" onclick="confirmModalAction()">确定</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 向量化模态框 -->
+    <div class="modal fade" id="vectorizationModal" tabindex="-1">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-vector-pen me-2"></i>文档向量化
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <!-- 向量化配置 -->
+                            <div class="card mb-3">
+                                <div class="card-header">
+                                    <h6 class="mb-0">向量化配置</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <label class="form-label">分块大小</label>
+                                        <input type="number" class="form-control" id="chunkSize" value="1000" min="100" max="5000">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">重叠大小</label>
+                                        <input type="number" class="form-control" id="chunkOverlap" value="200" min="0" max="1000">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">OCR引擎</label>
+                                        <select class="form-select" id="ocrEngine">
+                                            <option value="auto">自动选择</option>
+                                            <option value="tesseract">Tesseract</option>
+                                            <option value="easyocr">EasyOCR</option>
+                                        </select>
+                                    </div>
+                                    <button class="btn btn-outline-primary btn-sm" onclick="rechunkText()">
+                                        <i class="bi bi-arrow-clockwise"></i> 重新分段
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- 文档信息 -->
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="mb-0">文档信息</h6>
+                                </div>
+                                <div class="card-body">
+                                    <p><strong>文档:</strong> <span id="vectorizationDocName">-</span></p>
+                                    <p><strong>分段数:</strong> <span id="vectorizationChunkCount">0</span></p>
+                                    <p><strong>文本长度:</strong> <span id="vectorizationTextLength">0</span> 字符</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-8">
+                            <!-- 文本分段预览 -->
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="mb-0">文本分段预览</h6>
+                                </div>
+                                <div class="card-body" style="max-height: 500px; overflow-y: auto;">
+                                    <div id="chunksContainer">
+                                        <!-- 分段内容将在这里动态生成 -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-success" id="executeVectorization" onclick="executeVectorization()">
+                        <i class="bi bi-check"></i> 确认向量化
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="js/semantic_search.js"></script>
+    <script src="/js/integrated_app.js"></script>
 </body>
 </html> 
