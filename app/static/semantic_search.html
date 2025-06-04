@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能文档语义检索</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f8f9fa;
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .container-fluid {
+            height: 100vh;
+            padding: 0;
+        }
+
+        .sidebar {
+            height: 100vh;
+            background: linear-gradient(180deg, #ffffff 0%, #f8f9fa 100%);
+            border-right: 1px solid #e0e0e0;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+            overflow-y: auto;
+        }
+
+        .sidebar-header {
+            padding: 20px 15px 15px;
+            border-bottom: 1px solid #e0e0e0;
+            background: #fff;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .sidebar-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #2c3e50;
+            margin: 0;
+        }
+
+        .file-tree {
+            padding: 15px;
+            height: calc(100vh - 80px);
+            overflow-y: auto;
+        }
+
+        .tree-item {
+            cursor: pointer;
+            padding: 8px 12px;
+            border-radius: 6px;
+            margin: 2px 0;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            font-size: 14px;
+        }
+
+        .tree-item:hover {
+            background-color: #e8f4fd;
+            transform: translateX(2px);
+        }
+
+        .tree-item.selected {
+            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+            color: white;
+            box-shadow: 0 2px 8px rgba(0,123,255,0.3);
+        }
+
+        .tree-item.highlight {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+            100% { transform: scale(1); }
+        }
+
+        .tree-item i {
+            margin-right: 8px;
+            width: 16px;
+            text-align: center;
+        }
+
+        .content-area {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background: #fff;
+        }
+
+        .document-preview {
+            flex: 1;
+            border-bottom: 1px solid #e0e0e0;
+            position: relative;
+            background: #fff;
+            height: 65vh;
+            overflow: auto;
+        }
+
+        .preview-header {
+            padding: 15px 20px;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-bottom: 1px solid #e0e0e0;
+            position: sticky;
+            top: 0;
+            z-index: 5;
+        }
+
+        .preview-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #2c3e50;
+            margin: 0;
+        }
+
+        .preview-content {
+            padding: 20px;
+            height: calc(65vh - 60px);
+            overflow: auto;
+        }
+
+        .chat-area {
+            height: 35vh;
+            background: #fff;
+            display: flex;
+            flex-direction: column;
+            border-top: 2px solid #e9ecef;
+        }
+
+        .chat-header {
+            padding: 12px 20px;
+            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+            color: white;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .chat-messages {
+            flex: 1;
+            padding: 15px 20px;
+            overflow-y: auto;
+            background: #f8f9fa;
+            height: calc(35vh - 120px);
+        }
+
+        .chat-input-area {
+            padding: 15px 20px;
+            background: #fff;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            display: flex;
+            align-items: flex-start;
+        }
+
+        .message.user {
+            justify-content: flex-end;
+        }
+
+        .message-content {
+            max-width: 80%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            position: relative;
+        }
+
+        .message.user .message-content {
+            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+            color: white;
+        }
+
+        .message.assistant .message-content {
+            background: #e9ecef;
+            color: #2c3e50;
+        }
+
+        .message-time {
+            font-size: 12px;
+            opacity: 0.7;
+            margin-top: 5px;
+        }
+
+        .chat-input {
+            border: 2px solid #e9ecef;
+            border-radius: 25px;
+            padding: 12px 20px;
+            font-size: 14px;
+            resize: none;
+            transition: all 0.3s ease;
+        }
+
+        .chat-input:focus {
+            border-color: #007bff;
+            box-shadow: 0 0 0 0.2rem rgba(0,123,255,0.25);
+        }
+
+        .send-button {
+            border-radius: 50%;
+            width: 45px;
+            height: 45px;
+            border: none;
+            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+            color: white;
+            transition: all 0.3s ease;
+        }
+
+        .send-button:hover {
+            transform: scale(1.1);
+            box-shadow: 0 4px 12px rgba(0,123,255,0.4);
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #007bff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #6c757d;
+        }
+
+        .empty-state i {
+            font-size: 48px;
+            margin-bottom: 15px;
+            opacity: 0.5;
+        }
+
+        .highlight-text {
+            background: linear-gradient(120deg, #a8e6cf 0%, #dcedc1 50%, #ffd3a5 100%);
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-weight: 500;
+            animation: highlight-fade 3s ease-in-out;
+        }
+
+        @keyframes highlight-fade {
+            0% { background-color: #ffeb3b; }
+            50% { background-color: #ffc107; }
+            100% { background: linear-gradient(120deg, #a8e6cf 0%, #dcedc1 50%, #ffd3a5 100%); }
+        }
+
+        .search-results-info {
+            background: #e3f2fd;
+            border: 1px solid #bbdefb;
+            border-radius: 8px;
+            padding: 10px 15px;
+            margin-bottom: 15px;
+            font-size: 13px;
+            color: #1565c0;
+        }
+
+        /* 文件类型图标颜色 */
+        .icon-pdf { color: #dc3545; }
+        .icon-word { color: #0d6efd; }
+        .icon-excel { color: #198754; }
+        .icon-image { color: #fd7e14; }
+        .icon-video { color: #6f42c1; }
+        .icon-folder { color: #ffc107; }
+        .icon-file { color: #6c757d; }
+
+        /* 搜索框样式 */
+        .tree-search {
+            padding: 10px 15px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .search-input {
+            border: 1px solid #e0e0e0;
+            border-radius: 20px;
+            padding: 8px 15px 8px 35px;
+            font-size: 13px;
+            transition: all 0.3s ease;
+            width: 100%;
+        }
+
+        .search-input:focus {
+            border-color: #007bff;
+            box-shadow: 0 0 0 0.2rem rgba(0,123,255,0.15);
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #6c757d;
+            pointer-events: none;
+        }
+
+        .search-clear {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #6c757d;
+            cursor: pointer;
+            display: none;
+        }
+
+        .search-clear:hover {
+            color: #007bff;
+        }
+
+        /* 文档树折叠样式 */
+        .tree-item.folder-item {
+            position: relative;
+        }
+
+        .folder-toggle {
+            position: absolute;
+            left: 5px;
+            width: 16px;
+            height: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 10px;
+            color: #6c757d;
+            transition: transform 0.2s ease;
+        }
+
+        .folder-toggle.expanded {
+            transform: rotate(90deg);
+        }
+
+        .tree-item.has-children {
+            padding-left: 30px;
+        }
+
+        .tree-children {
+            display: block;
+            transition: all 0.3s ease;
+        }
+
+        .tree-children.collapsed {
+            display: none;
+        }
+
+        .tree-item.filtered-hidden {
+            display: none;
+        }
+
+        .no-results {
+            text-align: center;
+            padding: 20px;
+            color: #6c757d;
+            font-size: 14px;
+        }
+
+        /* 路径显示样式 */
+        .path-display {
+            padding: 10px 15px;
+            border-bottom: 1px solid #e0e0e0;
+            background: #f8f9fa;
+            font-size: 12px;
+            color: #6c757d;
+            min-height: 40px;
+            display: flex;
+            align-items: center;
+        }
+
+        .path-display.hidden {
+            display: none;
+        }
+
+        .path-breadcrumb {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+
+        .path-item {
+            display: flex;
+            align-items: center;
+            color: #495057;
+            font-size: 12px;
+        }
+
+        .path-item:first-child {
+            color: #007bff;
+            font-weight: 500;
+        }
+
+        .path-item:last-child {
+            color: #28a745;
+            font-weight: 600;
+        }
+
+        .path-separator {
+            color: #adb5bd;
+            margin: 0 3px;
+            font-size: 10px;
+        }
+
+        .path-icon {
+            width: 12px;
+            margin-right: 4px;
+            font-size: 10px;
+        }
+
+        .path-item.clickable {
+            cursor: pointer;
+            padding: 2px 6px;
+            border-radius: 4px;
+            transition: background-color 0.2s ease;
+        }
+
+        .path-item.clickable:hover {
+            background-color: #e9ecef;
+            color: #007bff;
+        }
+
+        /* PDF预览样式 */
+        .pdf-content {
+            font-family: Georgia, 'Times New Roman', serif;
+            line-height: 1.6;
+            color: #333;
+        }
+
+        .page-header {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-left: 4px solid #007bff;
+            padding: 8px 12px;
+            margin: 20px 0 15px 0;
+            font-weight: 600;
+            font-size: 14px;
+            color: #495057;
+            border-radius: 4px;
+        }
+
+        .pdf-paragraph {
+            margin-bottom: 15px;
+            text-align: justify;
+            background: #fff;
+            padding: 12px 16px;
+            border-radius: 6px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border-left: 2px solid #e9ecef;
+        }
+
+        .pdf-paragraph:hover {
+            border-left-color: #007bff;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+        }
+
+        .preview-text {
+            max-height: calc(65vh - 120px);
+            overflow-y: auto;
+        }
+
+        /* PDF iframe预览样式 */
+        .pdf-container {
+            height: calc(65vh - 140px);
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        .pdf-iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            border-radius: 6px;
+        }
+
+        .pdf-text-container {
+            height: calc(65vh - 140px);
+            overflow-y: auto;
+        }
+
+        .loading-placeholder {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 200px;
+            color: #6c757d;
+        }
+
+        .loading-placeholder .loading {
+            margin-bottom: 10px;
+        }
+
+        .text-preview-info {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 10px 15px;
+            font-size: 13px;
+        }
+
+        /* Office文档预览样式 */
+        .office-container {
+            height: calc(65vh - 140px);
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        .office-iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            border-radius: 6px;
+        }
+
+        .office-text-container,
+        .office-data-container {
+            height: calc(65vh - 140px);
+            overflow-y: auto;
+        }
+
+        .office-content {
+            background: #fff;
+            padding: 15px;
+            border-radius: 6px;
+            line-height: 1.6;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        /* Excel表格样式 */
+        .excel-sheet {
+            margin-bottom: 20px;
+        }
+
+        .sheet-title {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+            padding: 8px 12px;
+            margin: 0 0 10px 0;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .excel-data-content .table {
+            font-size: 12px;
+            margin-bottom: 0;
+        }
+
+        .excel-data-content .table td {
+            padding: 4px 8px;
+            vertical-align: top;
+            max-width: 200px;
+            word-wrap: break-word;
+        }
+
+        .excel-data-content .table-responsive {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        /* 滚动条样式 */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #a8a8a8;
+        }
+
+        /* Word图片预览样式 */
+        .word-images-section {
+            border-top: 1px solid #e9ecef;
+            padding-top: 20px;
+            margin-top: 20px;
+        }
+
+        .word-image {
+            transition: all 0.3s ease;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .word-image:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+        }
+
+        .word-images-section .card {
+            border: 1px solid #e9ecef;
+            transition: all 0.3s ease;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .word-images-section .card:hover {
+            border-color: #007bff;
+            box-shadow: 0 4px 12px rgba(0,123,255,0.15);
+            transform: translateY(-2px);
+        }
+
+        .word-images-section .card-body {
+            background: #f8f9fa;
+            border-top: 1px solid #e9ecef;
+        }
+
+        /* Office文档内容样式 */
+        .office-content {
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+
+        .text-preview-info {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 10px 15px;
+            font-size: 13px;
+        }
+
+        .text-preview-info .text-muted {
+            color: #6c757d !important;
+        }
+
+        /* 模态框样式优化 */
+        .modal-body img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row h-100">
+            <!-- 左侧文档树 -->
+            <div class="col-3 sidebar">
+                <div class="sidebar-header">
+                    <h5 class="sidebar-title">
+                        <i class="bi bi-folder-open"></i>
+                        文档树
+                    </h5>
+                </div>
+                <!-- 搜索框 -->
+                <div class="tree-search">
+                    <div class="position-relative">
+                        <i class="bi bi-search search-icon"></i>
+                        <input type="text" 
+                               class="search-input" 
+                               id="tree-search-input" 
+                               placeholder="搜索文档名称...">
+                        <i class="bi bi-x search-clear" id="search-clear"></i>
+                    </div>
+                </div>
+                <!-- 路径显示 -->
+                <div class="path-display hidden" id="path-display">
+                    <div class="path-breadcrumb" id="path-breadcrumb">
+                        <span class="text-muted">未选择文档</span>
+                    </div>
+                </div>
+                <div class="file-tree" id="file-tree">
+                    <!-- 文档树将在这里动态加载 -->
+                </div>
+            </div>
+
+            <!-- 右侧内容区域 -->
+            <div class="col-9 content-area">
+                <!-- 文档预览区域 -->
+                <div class="document-preview">
+                    <div class="preview-header">
+                        <h6 class="preview-title" id="preview-title">
+                            <i class="bi bi-eye"></i>
+                            文档预览
+                        </h6>
+                    </div>
+                    <div class="preview-content" id="preview-content">
+                        <div class="empty-state">
+                            <i class="bi bi-file-earmark-text"></i>
+                            <p>请选择一个文档进行预览</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 聊天区域 -->
+                <div class="chat-area">
+                    <div class="chat-header">
+                        <i class="bi bi-chat-dots"></i>
+                        智能语义检索
+                    </div>
+                    <div class="chat-messages" id="chat-messages">
+                        <div class="message assistant">
+                            <div class="message-content">
+                                <div>您好！我是您的智能文档助手。您可以用自然语言描述要查找的内容，我会在文档中为您精确定位相关信息。</div>
+                                <div class="message-time">系统消息</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="chat-input-area">
+                        <div class="input-group">
+                            <textarea 
+                                class="form-control chat-input" 
+                                id="chat-input" 
+                                placeholder="请输入您要查找的内容，比如：合同中关于违约责任的条款..."
+                                rows="2"></textarea>
+                            <button class="btn send-button" type="button" id="send-button">
+                                <i class="bi bi-send"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="js/semantic_search.js"></script>
+</body>
+</html> 

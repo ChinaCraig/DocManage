@@ -146,7 +146,7 @@ def upload_file():
         }), 500
 
 @upload_bp.route('/process/<int:doc_id>', methods=['POST'])
-def process_document():
+def process_document(doc_id):
     """手动触发文档内容处理"""
     try:
         document = DocumentNode.query.get_or_404(doc_id)
