@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
 from app.models import DocumentNode, SystemConfig
-from app.services import VectorService
+from app.services.vectorization import VectorServiceAdapter
 import logging
 
 logger = logging.getLogger(__name__)
@@ -27,11 +27,10 @@ def semantic_search():
         milvus_port = SystemConfig.get_config('milvus_port', 19530)
         embedding_model = SystemConfig.get_config('embedding_model')
         
-        vector_service = VectorService()
-        vector_service.initialize(
-            host=milvus_host,
-            port=milvus_port,
-            model_name=embedding_model
+        vector_service = VectorServiceAdapter(
+            milvus_host=milvus_host,
+            milvus_port=milvus_port,
+            embedding_model=embedding_model
         )
         
         # 执行语义搜索
@@ -172,11 +171,10 @@ def search_stats():
         milvus_port = SystemConfig.get_config('milvus_port', 19530)
         embedding_model = SystemConfig.get_config('embedding_model')
         
-        vector_service = VectorService()
-        vector_service.initialize(
-            host=milvus_host,
-            port=milvus_port,
-            model_name=embedding_model
+        vector_service = VectorServiceAdapter(
+            milvus_host=milvus_host,
+            milvus_port=milvus_port,
+            embedding_model=embedding_model
         )
         
         # 获取向量统计

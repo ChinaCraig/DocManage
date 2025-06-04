@@ -25,10 +25,12 @@ def create_app(config_name=None):
     from app.routes.document_routes import document_bp
     from app.routes.search_routes import search_bp
     from app.routes.upload_routes import upload_bp
+    from app.routes.vectorize_routes import vectorize_bp
     
     app.register_blueprint(document_bp, url_prefix='/api/documents')
     app.register_blueprint(search_bp, url_prefix='/api/search')
     app.register_blueprint(upload_bp, url_prefix='/api/upload')
+    app.register_blueprint(vectorize_bp, url_prefix='/api/vectorize')
     
     # 注册主页路由
     @app.route('/')

@@ -19,6 +19,13 @@ class DocumentNode(db.Model):
     created_by = db.Column(db.String(100), default='system', comment='创建人')
     is_deleted = db.Column(db.Boolean, default=False, comment='是否删除')
     
+    # 向量化相关字段
+    is_vectorized = db.Column(db.Boolean, default=False, comment='是否已向量化')
+    vector_status = db.Column(db.String(50), default='not_started', comment='向量化状态')
+    vectorized_at = db.Column(db.DateTime, nullable=True, comment='向量化完成时间')
+    minio_path = db.Column(db.String(500), nullable=True, comment='MinIO存储路径')
+    doc_metadata = db.Column(db.JSON, nullable=True, comment='元数据（JSON格式）')
+    
     # 关系
     children = db.relationship('DocumentNode', backref=db.backref('parent', remote_side=[id]))
     contents = db.relationship('DocumentContent', backref='document', cascade='all, delete-orphan')
@@ -39,7 +46,12 @@ class DocumentNode(db.Model):
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
             'created_by': self.created_by,
-            'is_deleted': self.is_deleted
+            'is_deleted': self.is_deleted,
+            'is_vectorized': self.is_vectorized,
+            'vector_status': self.vector_status,
+            'vectorized_at': self.vectorized_at.isoformat() if self.vectorized_at else None,
+            'minio_path': self.minio_path,
+            'metadata': self.doc_metadata
         }
     
     def to_tree_dict(self):

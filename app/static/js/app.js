@@ -168,14 +168,20 @@ async function showDocumentDetail(node) {
             
             let actionButtons = '';
             if (doc.type === 'file') {
+                // 根据文件类型和向量化状态调整按钮
+                const isPDF = doc.file_type === 'pdf' || (doc.file_path && doc.file_path.toLowerCase().endsWith('.pdf'));
+                const isVectorized = doc.is_vectorized;
+                
                 actionButtons = `
                     <div class="btn-group" role="group">
                         <button class="btn btn-sm btn-outline-primary" onclick="processDocument(${doc.id})">
                             <i class="bi bi-gear"></i> 处理文档
                         </button>
-                        <button class="btn btn-sm btn-outline-success" onclick="vectorizeDocument(${doc.id})">
-                            <i class="bi bi-vector-pen"></i> 向量化
-                        </button>
+                        ${isPDF ? `
+                            <button class="btn btn-sm ${isVectorized ? 'btn-outline-info' : 'btn-outline-success'}" onclick="vectorizeDocument(${doc.id})">
+                                <i class="bi bi-vector-pen"></i> ${isVectorized ? '重新向量化' : '向量化'}
+                            </button>
+                        ` : ''}
                         <button class="btn btn-sm btn-outline-warning" onclick="showEditDocumentModal(${doc.id}, '${doc.name}', '${doc.description || ''}', 'file')">
                             <i class="bi bi-pencil"></i> 编辑
                         </button>
@@ -198,6 +204,45 @@ async function showDocumentDetail(node) {
                 `;
             }
             
+            // 构建向量化状态信息
+            let vectorizationInfo = '';
+            if (doc.type === 'file' && doc.is_vectorized) {
+                const metadata = doc.metadata || {};
+                const vectorData = metadata.vectorization || {};
+                
+                vectorizationInfo = `
+                    <div class="mt-3">
+                        <h6><i class="bi bi-vector-pen text-success me-2"></i>向量化信息</h6>
+                        <div class="card bg-light">
+                            <div class="card-body py-2">
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <small class="text-muted">状态:</small>
+                                        <span class="badge bg-success ms-1">${doc.vector_status || 'completed'}</span>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <small class="text-muted">文本块:</small>
+                                        <strong class="ms-1">${vectorData.chunk_count || 0}</strong>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <small class="text-muted">完成时间:</small>
+                                        <small class="ms-1">${doc.vectorized_at ? formatDateTime(doc.vectorized_at) : '未知'}</small>
+                                    </div>
+                                </div>
+                                ${vectorData.minio_path ? `
+                                    <div class="row mt-2">
+                                        <div class="col-12">
+                                            <small class="text-muted">存储路径:</small>
+                                            <code class="ms-1">${vectorData.minio_path}</code>
+                                        </div>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
             infoDiv.innerHTML = `
                 <div class="card">
                     <div class="card-body">
@@ -212,6 +257,7 @@ async function showDocumentDetail(node) {
                             <strong>描述:</strong> ${doc.description || '无'}
                         </p>
                         ${actionButtons}
+                        ${vectorizationInfo}
                         ${doc.content_info ? `
                             <div class="mt-3">
                                 <h6>内容信息</h6>
@@ -920,21 +966,198 @@ async function processDocument(docId) {
 // 向量化文档
 async function vectorizeDocument(docId) {
     try {
-        const response = await fetch(`/api/upload/vectorize/${docId}`, {
-            method: 'POST'
+        // 首先预览PDF内容
+        showInfo('正在分析PDF内容，请稍候...');
+        
+        const response = await fetch(`/api/vectorize/preview/${docId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                chunk_size: 1000,
+                overlap: 200
+            })
         });
         
         const result = await response.json();
         
         if (result.success) {
-            showSuccess(`向量化完成: ${result.data.vectorized_count} 个文本块`);
-            showDocumentDetail({id: docId});
+            // 显示向量化预览模态框
+            showVectorizationPreviewModal(result.data);
+        } else {
+            showError('PDF分析失败: ' + result.error);
+        }
+    } catch (error) {
+        showError('PDF分析失败: ' + error.message);
+    }
+}
+
+// 显示向量化预览模态框
+function showVectorizationPreviewModal(data) {
+    const modal = new bootstrap.Modal(document.getElementById('vectorizationModal'));
+    
+    // 设置基本信息
+    document.getElementById('vectorizationDocName').textContent = data.document_name;
+    document.getElementById('vectorizationChunkCount').textContent = data.chunk_count;
+    document.getElementById('vectorizationTextLength').textContent = data.text_length;
+    
+    // 设置分段参数
+    document.getElementById('chunkSize').value = data.chunk_size;
+    document.getElementById('chunkOverlap').value = data.overlap;
+    
+    // 渲染文本分段
+    renderTextChunks(data.chunks);
+    
+    // 存储数据到模态框中
+    document.getElementById('vectorizationModal').dataset.documentId = data.document_id;
+    document.getElementById('vectorizationModal').dataset.originalData = JSON.stringify(data);
+    
+    modal.show();
+}
+
+// 渲染文本分段
+function renderTextChunks(chunks) {
+    const container = document.getElementById('chunksContainer');
+    container.innerHTML = '';
+    
+    if (!chunks || !Array.isArray(chunks)) {
+        container.innerHTML = '<div class="alert alert-warning">没有可显示的文本分段</div>';
+        return;
+    }
+    
+    chunks.forEach((chunk, index) => {
+        // 安全地获取文本内容，避免undefined
+        const content = chunk && chunk.content !== undefined && chunk.content !== null ? chunk.content : '';
+        const chunkId = chunk && chunk.id ? chunk.id : `chunk_${index}`;
+        
+        const chunkDiv = document.createElement('div');
+        chunkDiv.className = 'chunk-item mb-3';
+        chunkDiv.innerHTML = `
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0">分段 ${index + 1}</h6>
+                    <span class="badge bg-secondary">${content.length} 字符</span>
+                </div>
+                <div class="card-body">
+                    <textarea 
+                        class="form-control chunk-textarea" 
+                        rows="4" 
+                        data-chunk-id="${chunkId}"
+                        placeholder="文本内容..."
+                    >${content}</textarea>
+                </div>
+            </div>
+        `;
+        container.appendChild(chunkDiv);
+    });
+}
+
+// 重新分段
+async function rechunkText() {
+    try {
+        const modal = document.getElementById('vectorizationModal');
+        const documentId = modal.dataset.documentId;
+        const chunkSize = parseInt(document.getElementById('chunkSize').value) || 1000;
+        const overlap = parseInt(document.getElementById('chunkOverlap').value) || 200;
+        
+        showInfo('正在重新分段，请稍候...');
+        
+        const response = await fetch(`/api/vectorize/preview/${documentId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                chunk_size: chunkSize,
+                overlap: overlap
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // 更新分段显示
+            renderTextChunks(result.data.chunks);
+            document.getElementById('vectorizationChunkCount').textContent = result.data.chunk_count;
+            showSuccess('重新分段完成');
+        } else {
+            showError('重新分段失败: ' + result.error);
+        }
+    } catch (error) {
+        showError('重新分段失败: ' + error.message);
+    }
+}
+
+// 执行向量化
+async function executeVectorization() {
+    try {
+        const modal = document.getElementById('vectorizationModal');
+        const documentId = modal.dataset.documentId;
+        const originalData = JSON.parse(modal.dataset.originalData);
+        
+        // 收集所有编辑后的文本块
+        const chunks = [];
+        const textareas = modal.querySelectorAll('.chunk-textarea');
+        
+        textareas.forEach((textarea, index) => {
+            const content = textarea.value.trim();
+            if (content) {
+                chunks.push({
+                    id: textarea.dataset.chunkId,
+                    content: content
+                });
+            }
+        });
+        
+        if (chunks.length === 0) {
+            showWarning('没有可向量化的文本内容');
+            return;
+        }
+        
+        // 显示进度
+        const executeBtn = document.getElementById('executeVectorization');
+        const originalText = executeBtn.textContent;
+        executeBtn.disabled = true;
+        executeBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> 向量化中...';
+        
+        showInfo('正在执行向量化，请稍候...');
+        
+        const response = await fetch(`/api/vectorize/execute/${documentId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                chunks: chunks,
+                metadata: originalData.metadata
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showSuccess(`向量化完成！已处理 ${result.data.vectorized_chunks} 个文本块`);
+            
+            // 关闭模态框
+            bootstrap.Modal.getInstance(modal).hide();
+            
+            // 刷新文档详情和统计信息
+            if (selectedNode) {
+                showDocumentDetail(selectedNode);
+            }
             loadStats();
+            
         } else {
             showError('向量化失败: ' + result.error);
         }
     } catch (error) {
         showError('向量化失败: ' + error.message);
+    } finally {
+        // 恢复按钮状态
+        const executeBtn = document.getElementById('executeVectorization');
+        executeBtn.disabled = false;
+        executeBtn.textContent = '确认向量化';
     }
 }
 

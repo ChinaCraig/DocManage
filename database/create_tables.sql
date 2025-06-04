@@ -8,7 +8,7 @@
 -- 3. 执行此脚本：mysql -u root -p document_management < database/create_tables.sql
 --
 -- 或者直接在MySQL命令行中执行：
--- mysql -h 192.168.16.108 -u root -p
+-- mysql -h 192.168.16.199 -u root -p
 -- mysql> CREATE DATABASE document_management CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 -- mysql> USE document_management;
 -- mysql> source /path/to/database/create_tables.sql;
@@ -118,7 +118,7 @@ INSERT IGNORE INTO system_configs (config_key, config_value, config_type, descri
 ('embedding_model', 'all-MiniLM-L6-v2', 'string', '文本嵌入模型'),
 ('chunk_size', '1000', 'int', '文本分块大小'),
 ('chunk_overlap', '200', 'int', '文本分块重叠大小'),
-('milvus_host', 'localhost', 'string', 'Milvus服务器地址'),
+('milvus_host', '192.168.16.199', 'string', 'Milvus服务器地址'),
 ('milvus_port', '19530', 'int', 'Milvus服务器端口'),
 ('max_file_size', '104857600', 'int', '最大文件大小（100MB）');
 

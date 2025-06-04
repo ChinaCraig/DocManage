@@ -2,15 +2,40 @@ Flask==2.3.3
 Flask-CORS==4.0.0
 Flask-SQLAlchemy==3.0.5
 PyMySQL==1.1.0
-pymilvus==2.3.1
+pymilvus==2.5.10
+
+# PDF处理
 PyMuPDF==1.23.8
 pdfplumber==0.10.3
+PyPDF2==3.0.1
+
+# Word文档处理
+python-docx==1.1.0
+docx2txt==0.8
+
+# Excel处理
+pandas>=2.1.4
+openpyxl==3.1.2
+xlrd==2.0.1
+
+# 图片处理和OCR
 pytesseract==0.3.10
-Pillow==10.0.1
-numpy==1.24.3
-sentence-transformers==2.2.2
-transformers==4.35.0
-torch==2.1.0
+Pillow>=10.1.0
+easyocr==1.7.0
+
+# 视频处理
+opencv-python==4.8.1.78
+
+# 向量和AI - 兼容Python 3.12的版本
+numpy>=1.26.0,<2.0.0
+sentence-transformers>=2.6.0
+transformers>=4.37.0
+torch>=2.1.0
+
+# MinIO对象存储
+minio==7.2.0
+
+# 其他工具
 requests==2.31.0
-python-dotenv==1.0.0
+python-dotenv>=1.0.1,<2.0.0
 Werkzeug==2.3.7 

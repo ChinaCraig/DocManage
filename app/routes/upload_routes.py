@@ -4,8 +4,9 @@ from werkzeug.utils import secure_filename
 from flask import Blueprint, request, jsonify, current_app
 from app import db
 from app.models import DocumentNode, DocumentContent, VectorRecord, SystemConfig
-from app.services import PDFService, WordService, ExcelService, ImageService, VideoService, VectorService
+from app.services import PDFService, WordService, ExcelService, ImageService, VideoService
 import logging
+from app.services.vectorization import VectorServiceAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -176,15 +177,13 @@ def process_document():
 def vectorize_document():
     """向量化文档"""
     try:
-        document = DocumentNode.query.get_or_404(doc_id)
-        
-        if document.type != 'file':
+        document = DocumentNode.query.get(doc_id)
+        if not document:
             return jsonify({
                 'success': False,
-                'error': '只能向量化文件类型的文档'
-            }), 400
+                'error': '文档不存在'
+            }), 404
         
-        # 检查是否有内容
         if not document.contents:
             return jsonify({
                 'success': False,
@@ -196,7 +195,7 @@ def vectorize_document():
         milvus_port = SystemConfig.get_config('milvus_port', 19530)
         embedding_model = SystemConfig.get_config('embedding_model')
         
-        vector_service = VectorService(
+        vector_service = VectorServiceAdapter(
             milvus_host=milvus_host,
             milvus_port=milvus_port,
             embedding_model=embedding_model
