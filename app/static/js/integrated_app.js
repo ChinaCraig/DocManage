@@ -267,6 +267,14 @@ async function showVectorization(docId) {
         关闭向量化
     `;
     
+    // 显示配置区域和操作按钮
+    document.getElementById('vectorizationConfig').style.display = 'block';
+    document.getElementById('vectorPanelFooter').style.display = 'block';
+    document.getElementById('vectorEmptyState').style.display = 'none';
+    
+    // 存储当前文档ID
+    vectorizationPanel.dataset.currentDocId = docId;
+    
     // 加载向量化信息
     await loadVectorizationInfo(docId);
 }
@@ -284,6 +292,11 @@ function closeVectorization() {
     
     // 隐藏向量化面板
     vectorizationPanel.classList.remove('active');
+    
+    // 隐藏配置区域和操作按钮
+    document.getElementById('vectorizationConfig').style.display = 'none';
+    document.getElementById('vectorPanelFooter').style.display = 'none';
+    document.getElementById('vectorEmptyState').style.display = 'block';
     
     // 恢复向量化按钮状态
     if (vectorizeBtn) {
@@ -306,18 +319,32 @@ function closeVectorization() {
 
 async function loadVectorizationInfo(docId) {
     const vectorDiv = document.getElementById('vectorPanelContent');
+    const chunksContainer = vectorDiv.querySelector('#vectorChunksContainer');
+    
+    // 如果没有chunks容器，创建一个
+    if (!chunksContainer) {
+        const newContainer = document.createElement('div');
+        newContainer.id = 'vectorChunksContainer';
+        newContainer.className = 'vector-chunks-container';
+        vectorDiv.appendChild(newContainer);
+    }
     
     // 显示加载状态
-    vectorDiv.innerHTML = '<div class="text-center p-3"><div class="loading"></div><p>正在加载向量信息...</p></div>';
+    const container = document.getElementById('vectorChunksContainer');
+    container.innerHTML = '<div class="text-center p-3"><div class="loading"></div><p>正在加载向量信息...</p></div>';
     
     try {
+        // 获取配置参数
+        const chunkSize = parseInt(document.getElementById('sideChunkSize').value) || 1000;
+        const overlap = parseInt(document.getElementById('sideChunkOverlap').value) || 200;
+        
         // 预览向量化信息
         const response = await fetch(`/api/vectorize/preview/${docId}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                chunk_size: 1000,
-                overlap: 200
+                chunk_size: chunkSize,
+                overlap: overlap
             })
         });
         
@@ -325,16 +352,19 @@ async function loadVectorizationInfo(docId) {
         
         if (result.success) {
             displayVectorChunks(result.data.chunks);
+            // 存储向量化数据
+            const vectorizationPanel = document.getElementById('vectorizationPanel');
+            vectorizationPanel.dataset.vectorizationData = JSON.stringify(result.data);
         } else {
             throw new Error(result.error);
         }
     } catch (error) {
-        vectorDiv.innerHTML = `
+        container.innerHTML = `
             <div class="empty-state">
                 <i class="bi bi-exclamation-triangle text-warning"></i>
                 <p>无法加载向量信息: ${error.message}</p>
-                <button class="btn btn-sm btn-primary mt-2" onclick="vectorizeDocument(${docId})">
-                    <i class="bi bi-vector-pen"></i> 开始向量化
+                <button class="btn btn-sm btn-primary mt-2" onclick="loadVectorizationInfo(${docId})">
+                    <i class="bi bi-arrow-clockwise"></i> 重新加载
                 </button>
             </div>
         `;
@@ -342,10 +372,10 @@ async function loadVectorizationInfo(docId) {
 }
 
 function displayVectorChunks(chunks) {
-    const vectorDiv = document.getElementById('vectorPanelContent');
+    const container = document.getElementById('vectorChunksContainer');
     
     if (!chunks || chunks.length === 0) {
-        vectorDiv.innerHTML = `
+        container.innerHTML = `
             <div class="empty-state">
                 <i class="bi bi-info-circle"></i>
                 <p>暂无向量分段信息</p>
@@ -361,24 +391,20 @@ function displayVectorChunks(chunks) {
     `;
     
     chunks.forEach((chunk, index) => {
+        const content = chunk.content || chunk;
         chunksHtml += `
             <div class="vector-chunk-item" data-chunk-id="${chunk.id || index}">
                 <div class="vector-chunk-header">
                     <span class="vector-chunk-index">分段 ${index + 1}</span>
-                    <div class="vector-chunk-actions">
-                        <button class="btn btn-outline-secondary btn-sm" onclick="editChunk(${index})">
-                            <i class="bi bi-pencil"></i>
-                        </button>
-                    </div>
                 </div>
                 <div class="vector-chunk-content" id="chunk-content-${index}">
-                    ${chunk.content || chunk}
+                    <textarea class="form-control chunk-textarea" rows="3" data-chunk-index="${index}" style="font-size: 12px;">${content}</textarea>
                 </div>
             </div>
         `;
     });
     
-    vectorDiv.innerHTML = chunksHtml;
+    container.innerHTML = chunksHtml;
 }
 
 // ============ 已移除的模式切换功能 ============
@@ -2266,106 +2292,8 @@ function downloadDocument(docId, fileName) {
 
 // ============ Excel预览切换功能 ============
 
-function showExcelFile(docId) {
-    // 显示原文件视图
-    document.getElementById('excelFileView').style.display = 'block';
-    document.getElementById('excelDataView').style.display = 'none';
-    
-    // 更新按钮状态
-    const buttons = document.querySelectorAll('.excel-preview-tabs .btn');
-    buttons[0].className = 'btn btn-sm btn-outline-primary active';
-    buttons[1].className = 'btn btn-sm btn-outline-secondary';
-}
-
-async function showExcelData(docId) {
-    try {
-        // 显示数据视图
-        document.getElementById('excelFileView').style.display = 'none';
-        document.getElementById('excelDataView').style.display = 'block';
-        
-        // 更新按钮状态
-        const buttons = document.querySelectorAll('.excel-preview-tabs .btn');
-        buttons[0].className = 'btn btn-sm btn-outline-secondary';
-        buttons[1].className = 'btn btn-sm btn-outline-primary active';
-        
-        // 获取Excel数据
-        const dataView = document.getElementById('excelDataView');
-        dataView.innerHTML = '<div class="text-center p-3"><div class="loading"></div><p>正在加载数据...</p></div>';
-        
-        const response = await fetch(`/api/preview/excel/${docId}`);
-        const result = await response.json();
-        
-        if (result.success && result.data.sheets) {
-            let sheetsHtml = '';
-            result.data.sheets.forEach((sheet, index) => {
-                sheetsHtml += `
-                    <div class="excel-sheet mb-4">
-                        <h6 class="sheet-title">
-                            <i class="bi bi-table me-2"></i>
-                            工作表: ${sheet.name || `Sheet${index + 1}`}
-                        </h6>
-                        <div class="excel-data-content">
-                            ${formatExcelSheetData(sheet.data)}
-                        </div>
-                    </div>
-                `;
-            });
-            
-            dataView.innerHTML = `
-                <div class="office-content">
-                    <div class="text-preview-info mb-3">
-                        <p class="mb-1"><strong>工作表数量:</strong> ${result.data.sheets.length}</p>
-                        <p class="mb-0 text-muted">Excel数据预览</p>
-                    </div>
-                    ${sheetsHtml}
-                </div>
-            `;
-        } else {
-            dataView.innerHTML = `
-                <div class="empty-state">
-                    <i class="bi bi-exclamation-triangle text-warning"></i>
-                    <h5>数据加载失败</h5>
-                    <p>${result.error || '无法读取Excel数据'}</p>
-                </div>
-            `;
-        }
-    } catch (error) {
-        document.getElementById('excelDataView').innerHTML = `
-            <div class="empty-state">
-                <i class="bi bi-exclamation-triangle text-danger"></i>
-                <h5>加载出错</h5>
-                <p>${error.message}</p>
-            </div>
-        `;
-    }
-}
-
-// ============ 新增函数：显示节点及其所有父节点 ============
-
-function showNodeAndParents(node) {
-    let currentNode = node;
-    while (currentNode && currentNode.classList.contains('tree-node')) {
-        currentNode.style.display = 'block';
-        
-        // 展开父节点
-        const expandBtn = currentNode.querySelector('.tree-expand-btn');
-        const childrenContainer = currentNode.querySelector('.tree-children');
-        
-        if (expandBtn && childrenContainer && childrenContainer.classList.contains('collapsed')) {
-            childrenContainer.classList.remove('collapsed');
-            expandBtn.classList.add('expanded');
-            const icon = expandBtn.querySelector('i');
-            if (icon) {
-                icon.className = 'bi bi-chevron-down';
-            }
-        }
-        
-        // 找到父级树节点
-        currentNode = currentNode.parentElement?.closest('.tree-node');
-    }
-}
-
-// ============ Excel预览切换功能 ============
+// 简化向量编辑功能，移除不必要的编辑模式切换
+// 因为现在textarea默认就是可编辑状态，用户可以直接编辑然后点击"确定"保存
 
 // 新增：向量编辑功能
 let isVectorEditMode = false;
@@ -2417,46 +2345,12 @@ function cancelVectorEdit() {
     }
 }
 
+// 保留updateChunk函数用于跟踪修改
 function updateChunk(index, content) {
     editedChunks[index] = content;
 }
 
-function editChunk(index) {
-    if (!isVectorEditMode) {
-        const content = document.getElementById(`chunk-content-${index}`);
-        const originalText = content.textContent;
-        content.innerHTML = `
-            <textarea class="form-control" style="min-height: 80px;" onchange="updateChunk(${index}, this.value)">${originalText}</textarea>
-            <div class="mt-2">
-                <button class="btn btn-sm btn-success" onclick="saveChunkEdit(${index})">
-                    <i class="bi bi-check"></i> 保存
-                </button>
-                <button class="btn btn-sm btn-secondary" onclick="cancelChunkEdit(${index}, '${originalText.replace(/'/g, "\\'")}')">
-                    <i class="bi bi-x"></i> 取消
-                </button>
-            </div>
-        `;
-    }
-}
-
-function saveChunkEdit(index) {
-    const content = document.getElementById(`chunk-content-${index}`);
-    const textarea = content.querySelector('textarea');
-    if (textarea) {
-        const newContent = textarea.value;
-        editedChunks[index] = newContent;
-        content.innerHTML = newContent;
-        showInfo(`分段 ${index + 1} 已更新（请点击"保存修改"以保存到服务器）`);
-    }
-}
-
-function cancelChunkEdit(index, originalContent) {
-    const content = document.getElementById(`chunk-content-${index}`);
-    content.innerHTML = originalContent;
-    delete editedChunks[index];
-}
-
-async function saveVectorEdit() {
+function saveVectorEdit() {
     if (Object.keys(editedChunks).length === 0) {
         showInfo('没有需要保存的修改');
         return;
@@ -2524,4 +2418,124 @@ function showCreateFolderModal() {
     document.getElementById('folderName').value = '';
     document.getElementById('folderDescription').value = '';
     modal.show();
+}
+
+// ============ 新的向量化操作函数 ============
+
+// 全局变量存储向量化数据
+let currentVectorizationData = null;
+
+async function rechunkTextInSidePanel() {
+    const vectorizationPanel = document.getElementById('vectorizationPanel');
+    const docId = vectorizationPanel.dataset.currentDocId;
+    
+    if (!docId) {
+        showError('无效的文档ID');
+        return;
+    }
+    
+    try {
+        const chunkSize = parseInt(document.getElementById('sideChunkSize').value) || 1000;
+        const overlap = parseInt(document.getElementById('sideChunkOverlap').value) || 200;
+        
+        showInfo('正在重新分段，请稍候...');
+        
+        const response = await fetch(`/api/vectorize/preview/${docId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                chunk_size: chunkSize,
+                overlap: overlap
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            displayVectorChunks(result.data.chunks);
+            vectorizationPanel.dataset.vectorizationData = JSON.stringify(result.data);
+            showSuccess('重新分段完成');
+        } else {
+            showError('重新分段失败: ' + result.error);
+        }
+    } catch (error) {
+        showError('重新分段失败: ' + error.message);
+    }
+}
+
+function resetVectorizationConfig() {
+    document.getElementById('sideChunkSize').value = 1000;
+    document.getElementById('sideChunkOverlap').value = 200;
+    showInfo('配置已重置');
+}
+
+function cancelVectorization() {
+    if (vectorizationMode) {
+        closeVectorization();
+        showInfo('已取消向量化操作');
+    }
+}
+
+async function confirmVectorization() {
+    const vectorizationPanel = document.getElementById('vectorizationPanel');
+    const docId = vectorizationPanel.dataset.currentDocId;
+    
+    if (!docId) {
+        showError('无效的文档ID');
+        return;
+    }
+    
+    try {
+        // 收集编辑后的文本块
+        const chunks = [];
+        const textareas = vectorizationPanel.querySelectorAll('.chunk-textarea');
+        
+        textareas.forEach((textarea, index) => {
+            const content = textarea.value.trim();
+            if (content) {
+                chunks.push({
+                    id: `chunk_${index}`,
+                    content: content
+                });
+            }
+        });
+        
+        if (chunks.length === 0) {
+            showWarning('没有可向量化的文本内容');
+            return;
+        }
+        
+        const confirmBtn = document.getElementById('confirmVectorization');
+        confirmBtn.disabled = true;
+        confirmBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> 向量化中...';
+        
+        showInfo('正在执行向量化，请稍候...');
+        
+        const response = await fetch(`/api/vectorize/execute/${docId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chunks })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showSuccess(`向量化完成！已处理 ${result.data.vectorized_chunks || chunks.length} 个文本块`);
+            closeVectorization();
+            
+            // 刷新文档详情
+            if (selectedNode) {
+                showDocumentDetail(selectedNode);
+            }
+            loadStats();
+        } else {
+            showError('向量化失败: ' + result.error);
+        }
+    } catch (error) {
+        showError('向量化失败: ' + error.message);
+    } finally {
+        const confirmBtn = document.getElementById('confirmVectorization');
+        confirmBtn.disabled = false;
+        confirmBtn.innerHTML = '<i class="bi bi-check-circle"></i> 确定';
+    }
 }

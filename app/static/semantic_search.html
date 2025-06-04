@@ -798,24 +798,22 @@
         .vector-chunk-item {
             background: #f8f9fa;
             border: 1px solid #e9ecef;
-            border-radius: 8px;
-            margin-bottom: 12px;
-            overflow: hidden;
+            border-radius: 6px;
+            padding: 8px;
+            margin-bottom: 8px;
         }
 
         .vector-chunk-header {
-            background: #e9ecef;
-            padding: 8px 12px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            border-bottom: 1px solid #dee2e6;
+            margin-bottom: 6px;
         }
 
         .vector-chunk-index {
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 600;
-            color: #495057;
+            color: #6c757d;
         }
 
         .vector-chunk-actions {
@@ -823,19 +821,74 @@
             gap: 4px;
         }
 
-        .vector-chunk-content {
-            padding: 12px;
-            background: white;
-            font-size: 13px;
-            line-height: 1.5;
-            color: #495057;
-            max-height: 200px;
-            overflow-y: auto;
-            white-space: pre-wrap;
+        .vector-chunk-actions .btn {
+            font-size: 10px;
+            padding: 2px 4px;
         }
 
-        .vector-chunk-content:hover {
+        .vector-chunk-content {
+            font-size: 12px;
+            line-height: 1.4;
+            color: #333;
+            max-height: 80px;
+            overflow-y: auto;
+        }
+
+        .vector-chunk-content.editable {
+            background: #fff;
+            border: 1px solid #ddd;
+            padding: 5px;
+            border-radius: 4px;
+        }
+
+        .vector-edit-controls {
+            display: flex;
+            gap: 6px;
+            justify-content: flex-end;
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid #e9ecef;
+        }
+
+        /* 向量化配置样式 */
+        .vectorization-config-section {
             background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+
+        .vectorization-config-section .config-header {
+            border-bottom: 1px solid #dee2e6;
+            padding-bottom: 8px;
+            margin-bottom: 15px;
+        }
+
+        .vectorization-config-section .form-control-sm {
+            font-size: 12px;
+        }
+
+        .vectorization-config-section .form-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #495057;
+        }
+
+        .vectorization-config-section .form-text {
+            font-size: 10px;
+            color: #6c757d;
+        }
+
+        /* 向量化面板底部按钮 */
+        .vector-panel-footer {
+            background: #f8f9fa;
+            border-top: 1px solid #e9ecef;
+        }
+
+        .vector-panel-footer .btn-sm {
+            font-size: 12px;
+            padding: 6px 12px;
         }
 
         /* 消息样式 */
@@ -1158,207 +1211,6 @@
         .document-detail-compact .info-value {
             color: #333;
         }
-
-        /* 向量化信息样式 */
-        .vector-chunk-item {
-            background: #f8f9fa;
-            border: 1px solid #e9ecef;
-            border-radius: 6px;
-            padding: 8px;
-            margin-bottom: 8px;
-        }
-
-        .vector-chunk-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 6px;
-        }
-
-        .vector-chunk-index {
-            font-size: 11px;
-            font-weight: 600;
-            color: #6c757d;
-        }
-
-        .vector-chunk-actions {
-            display: flex;
-            gap: 4px;
-        }
-
-        .vector-chunk-actions .btn {
-            font-size: 10px;
-            padding: 2px 4px;
-        }
-
-        .vector-chunk-content {
-            font-size: 12px;
-            line-height: 1.4;
-            color: #333;
-            max-height: 80px;
-            overflow-y: auto;
-        }
-
-        .vector-chunk-content.editable {
-            background: #fff;
-            border: 1px solid #ddd;
-            padding: 5px;
-            border-radius: 4px;
-        }
-
-        .vector-edit-controls {
-            display: flex;
-            gap: 6px;
-            justify-content: flex-end;
-            margin-top: 8px;
-            padding-top: 8px;
-            border-top: 1px solid #e9ecef;
-        }
-
-        .vector-edit-controls .btn {
-            font-size: 11px;
-            padding: 3px 6px;
-        }
-
-        /* 预览面板的特殊样式 - 确保正确显示 */
-        .preview-panel-content iframe {
-            width: 100%;
-            height: 100%;
-            border: none;
-            border-radius: 4px;
-            min-height: 300px;
-        }
-
-        .preview-panel-content img {
-            max-width: 100%;
-            max-height: 100%;
-            object-fit: contain;
-            border-radius: 4px;
-            display: block;
-            margin: 0 auto;
-        }
-
-        .preview-panel-content video {
-            max-width: 100%;
-            max-height: 100%;
-            border-radius: 4px;
-            display: block;
-            margin: 0 auto;
-        }
-
-        /* 改进的预览容器 */
-        .preview-container {
-            width: 100%;
-            height: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 300px;
-        }
-
-        .image-preview, .video-preview {
-            width: 100%;
-            height: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .pdf-preview iframe {
-            width: 100%;
-            height: 100%;
-            min-height: 350px;
-            border: none;
-            border-radius: 4px;
-        }
-
-        /* 文档信息显示样式 - 紧凑布局 */
-        .document-info-compact {
-            background: #f8f9fa;
-            border: 1px solid #e9ecef;
-            border-radius: 6px;
-            padding: 12px;
-            margin-top: auto;
-        }
-
-        .document-info-compact .info-header {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 14px;
-            font-weight: 600;
-            color: #495057;
-            margin-bottom: 10px;
-            padding-bottom: 6px;
-            border-bottom: 1px solid #e9ecef;
-        }
-
-        .document-info-compact .info-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 8px;
-        }
-
-        .document-info-compact .info-item {
-            display: flex;
-            align-items: center;
-            font-size: 12px;
-            line-height: 1.4;
-        }
-
-        .document-info-compact .info-item.info-description {
-            grid-column: 1 / -1;
-        }
-
-        .document-info-compact .label {
-            font-weight: 600;
-            color: #6c757d;
-            min-width: 60px;
-            margin-right: 6px;
-            flex-shrink: 0;
-        }
-
-        .document-info-compact .value {
-            color: #333;
-            flex: 1;
-            word-break: break-word;
-        }
-
-        /* 旧样式保留以防其他地方使用 */
-        .document-info-section .card {
-            border: 1px solid #e9ecef;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-
-        .document-info-section .card-header {
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-            border-bottom: 1px solid #e9ecef;
-            padding: 12px 15px;
-        }
-
-        .document-info-section .card-body {
-            padding: 15px;
-        }
-
-        .document-info-section .info-item {
-            display: flex;
-            align-items: center;
-            font-size: 13px;
-        }
-
-        .document-info-section .info-label {
-            font-weight: 600;
-            color: #495057;
-            min-width: 80px;
-            margin-right: 8px;
-        }
-
-        .document-info-section .info-value {
-            color: #333;
-            flex: 1;
-            word-break: break-word;
-        }
     </style>
 </head>
 <body>
@@ -1482,14 +1334,55 @@
                                 <div class="vector-panel">
                                     <div class="vector-panel-header">
                                         <h6><i class="bi bi-vector-pen"></i> 向量分段信息</h6>
-                                        <button class="btn btn-sm btn-outline-secondary" onclick="closeVectorization()">
-                                            <i class="bi bi-x"></i> 关闭
-                                        </button>
                                     </div>
                                     <div class="vector-panel-content" id="vectorPanelContent">
-                                        <div class="empty-state">
+                                        <!-- 向量化配置参数区域 -->
+                                        <div class="vectorization-config-section" style="display: none;" id="vectorizationConfig">
+                                            <div class="config-header mb-3">
+                                                <h6 class="text-primary"><i class="bi bi-gear"></i> 向量化配置</h6>
+                                            </div>
+                                            <div class="row">
+                                                <div class="col-md-6">
+                                                    <div class="mb-3">
+                                                        <label for="sideChunkSize" class="form-label">分段字符长度</label>
+                                                        <input type="number" class="form-control form-control-sm" id="sideChunkSize" value="1000" min="100" max="5000" step="100">
+                                                        <div class="form-text">每个文本段的最大字符数</div>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <div class="mb-3">
+                                                        <label for="sideChunkOverlap" class="form-label">重叠字符数</label>
+                                                        <input type="number" class="form-control form-control-sm" id="sideChunkOverlap" value="200" min="0" max="500" step="50">
+                                                        <div class="form-text">相邻段落间的重叠字符数</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="d-flex gap-2 mb-3">
+                                                <button class="btn btn-outline-primary btn-sm" onclick="rechunkTextInSidePanel()">
+                                                    <i class="bi bi-arrow-clockwise"></i> 重新分段
+                                                </button>
+                                                <button class="btn btn-outline-info btn-sm" onclick="resetVectorizationConfig()">
+                                                    <i class="bi bi-arrow-counterclockwise"></i> 重置配置
+                                                </button>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- 默认空状态 -->
+                                        <div class="empty-state" id="vectorEmptyState">
                                             <i class="bi bi-puzzle"></i>
                                             <p>请先对文档进行向量化</p>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- 向量化操作按钮区域 -->
+                                    <div class="vector-panel-footer" style="display: none;" id="vectorPanelFooter">
+                                        <div class="d-flex justify-content-end gap-2 p-3 border-top">
+                                            <button class="btn btn-secondary btn-sm" onclick="cancelVectorization()">
+                                                <i class="bi bi-x-circle"></i> 取消
+                                            </button>
+                                            <button class="btn btn-success btn-sm" id="confirmVectorization" onclick="confirmVectorization()">
+                                                <i class="bi bi-check-circle"></i> 确定
+                                            </button>
                                         </div>
                                     </div>
                                 </div>
