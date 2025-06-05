@@ -55,12 +55,14 @@ def create_app(config_name=None):
     from app.routes.upload_routes import upload_bp
     from app.routes.vectorize_routes import vectorize_bp
     from app.routes.preview_routes import preview_bp
+    from app.routes.tag_routes import tag_bp
     
     app.register_blueprint(document_bp, url_prefix='/api/documents')
     app.register_blueprint(search_bp, url_prefix='/api/search')
     app.register_blueprint(upload_bp, url_prefix='/api/upload')
     app.register_blueprint(vectorize_bp, url_prefix='/api/vectorize')
     app.register_blueprint(preview_bp, url_prefix='/api/preview')
+    app.register_blueprint(tag_bp, url_prefix='/api/tags')
     
     # 注册主页路由 - 重定向到语义搜索
     @app.route('/')

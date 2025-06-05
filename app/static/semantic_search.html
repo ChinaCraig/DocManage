@@ -1412,6 +1412,199 @@
             border-radius: 4px;
             padding: 2px 8px;
         }
+
+        /* 标签选择器样式 */
+        .tag-selector {
+            position: relative;
+        }
+
+        .tag-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 0.375rem;
+            box-shadow: 0 0.5rem 1rem rgba(0,0,0,0.15);
+            z-index: 1050;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .tag-dropdown-item {
+            padding: 8px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid #f8f9fa;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .tag-dropdown-item:hover {
+            background-color: #f8f9fa;
+        }
+
+        .tag-dropdown-item.create-new {
+            color: #007bff;
+            font-weight: 500;
+        }
+
+        .tag-color-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        /* 已选择标签样式 */
+        .selected-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .tag-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+            color: white;
+            cursor: pointer;
+        }
+
+        .tag-badge .remove-tag {
+            margin-left: 4px;
+            cursor: pointer;
+            opacity: 0.8;
+        }
+
+        .tag-badge .remove-tag:hover {
+            opacity: 1;
+        }
+
+        /* 文档树中的标签显示 */
+        .node-tags {
+            display: inline-flex;
+            gap: 3px;
+            margin-left: 6px;
+            vertical-align: middle;
+        }
+
+        .node-tag {
+            display: inline-block;
+            padding: 1px 5px;
+            border-radius: 8px;
+            font-size: 10px;
+            font-weight: 500;
+            color: white;
+            line-height: 1.2;
+        }
+
+        /* 文件列表显示改进 */
+        .file-list-item {
+            padding: 8px 12px;
+            border-bottom: 1px solid #f8f9fa;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .file-list-item .file-main-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .file-list-item .file-path {
+            font-size: 11px;
+            color: #6c757d;
+            font-family: monospace;
+        }
+
+        .folder-structure {
+            margin-left: 15px;
+            border-left: 2px solid #e9ecef;
+            padding-left: 10px;
+        }
+
+        .folder-item {
+            padding: 2px 0;
+            font-size: 12px;
+            color: #495057;
+        }
+
+        .folder-item.folder {
+            font-weight: 500;
+            color: #007bff;
+        }
+
+        .folder-item.file {
+            margin-left: 15px;
+            color: #6c757d;
+        }
+
+        /* 文件上传预览文件夹结构样式 */
+        #fileList .list-group-item {
+            border: none;
+            border-radius: 4px;
+            margin-bottom: 2px;
+            padding: 8px 12px;
+            font-size: 13px;
+        }
+
+        #fileList .list-group-item:hover {
+            background-color: #f8f9fa;
+        }
+
+        #fileList .list-group-item .bi-folder {
+            color: #ffc107;
+        }
+
+        #fileList .list-group-item .bi-file-earmark {
+            color: #6c757d;
+        }
+
+        /* 文件夹层级缩进效果 */
+        #fileList .list-group-item div:first-child {
+            text-indent: calc(var(--level, 0) * 15px);
+        }
+
+        /* 标签搜索相关样式 */
+        .highlight {
+            background-color: #ffeb3b;
+            color: #333;
+            font-weight: bold;
+            padding: 1px 2px;
+            border-radius: 2px;
+        }
+
+        .tag-search-match {
+            background-color: #e3f2fd !important;
+            border-color: #2196f3 !important;
+        }
+
+        .search-match {
+            background-color: #f8f9fa;
+            border-left: 3px solid #007bff;
+        }
+
+        .no-search-results {
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+
+        .no-search-results code {
+            background-color: #e9ecef;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-size: 0.875em;
+            color: #495057;
+        }
     </style>
 </head>
 <body>
@@ -1464,7 +1657,7 @@
                     <div class="search-container">
                         <div class="search-input-group">
                             <i class="bi bi-search search-icon"></i>
-                            <input type="text" id="treeSearch" class="search-input" placeholder="搜索文档..." autocomplete="off">
+                            <input type="text" id="treeSearch" class="search-input" placeholder="搜索文档或标签... (可使用 tag:标签名)" autocomplete="off">
                             <i class="bi bi-x-circle search-clear" id="searchClear" onclick="clearTreeSearch()"></i>
                         </div>
                     </div>
@@ -1736,6 +1929,16 @@
                         <div class="list-group" id="fileList" style="max-height: 200px; overflow-y: auto;"></div>
                     </div>
 
+                    <!-- 标签选择 -->
+                    <div class="mt-3">
+                        <label for="uploadTags" class="form-label">标签 (可选)</label>
+                        <div class="tag-selector">
+                            <input type="text" class="form-control" id="uploadTagInput" placeholder="搜索或输入新标签..." autocomplete="off">
+                            <div class="tag-dropdown" id="uploadTagDropdown" style="display: none;"></div>
+                            <div class="selected-tags mt-2" id="uploadSelectedTags"></div>
+                        </div>
+                    </div>
+
                     <!-- 描述 -->
                     <div class="mt-3">
                         <label for="fileDescription" class="form-label">描述 (可选)</label>
@@ -1779,6 +1982,16 @@
                         <label for="folderDescription" class="form-label">描述 (可选)</label>
                         <textarea class="form-control" id="folderDescription" rows="3" placeholder="文件夹描述..."></textarea>
                     </div>
+                    
+                    <!-- 标签选择 -->
+                    <div class="mb-3">
+                        <label for="folderTags" class="form-label">标签 (可选)</label>
+                        <div class="tag-selector">
+                            <input type="text" class="form-control" id="folderTagInput" placeholder="搜索或输入新标签..." autocomplete="off">
+                            <div class="tag-dropdown" id="folderTagDropdown" style="display: none;"></div>
+                            <div class="selected-tags mt-2" id="folderSelectedTags"></div>
+                        </div>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
@@ -1809,6 +2022,14 @@
                     <div class="mb-3">
                         <label for="editDocumentDescription" class="form-label">描述</label>
                         <textarea class="form-control" id="editDocumentDescription" rows="3" placeholder="文档描述..."></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editDocumentTags" class="form-label">标签</label>
+                        <div class="tag-selector">
+                            <input type="text" class="form-control" id="editTagInput" placeholder="搜索或输入新标签..." autocomplete="off">
+                            <div class="tag-dropdown" id="editTagDropdown" style="display: none;"></div>
+                            <div class="selected-tags mt-2" id="editSelectedTags"></div>
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">

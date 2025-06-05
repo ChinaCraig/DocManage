@@ -31,6 +31,9 @@ class DocumentNode(db.Model):
     contents = db.relationship('DocumentContent', backref='document', cascade='all, delete-orphan')
     vector_records = db.relationship('VectorRecord', backref='document', cascade='all, delete-orphan')
     
+    # 标签关系 - 多对多关系
+    tags = db.relationship('Tag', secondary='document_tags', back_populates='documents')
+    
     def to_dict(self):
         """转换为字典格式"""
         return {
@@ -51,7 +54,8 @@ class DocumentNode(db.Model):
             'vector_status': self.vector_status,
             'vectorized_at': self.vectorized_at.isoformat() if self.vectorized_at else None,
             'minio_path': self.minio_path,
-            'metadata': self.doc_metadata
+            'doc_metadata': self.doc_metadata,
+            'tags': [tag.to_dict() for tag in self.tags] if self.tags else []
         }
     
     def to_tree_dict(self):
@@ -59,6 +63,55 @@ class DocumentNode(db.Model):
         result = self.to_dict()
         result['children'] = [child.to_tree_dict() for child in self.children if not child.is_deleted]
         return result
+
+class Tag(db.Model):
+    """标签模型"""
+    __tablename__ = 'tags'
+    
+    id = db.Column(db.BigInteger, primary_key=True)
+    name = db.Column(db.String(100), nullable=False, unique=True, comment='标签名称')
+    color = db.Column(db.String(7), default='#007bff', comment='标签颜色')
+    description = db.Column(db.Text, nullable=True, comment='标签描述')
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_by = db.Column(db.String(100), default='system', comment='创建人')
+    is_deleted = db.Column(db.Boolean, default=False, comment='是否删除')
+    
+    # 关系
+    documents = db.relationship('DocumentNode', secondary='document_tags', back_populates='tags')
+    
+    def to_dict(self):
+        """转换为字典格式"""
+        return {
+            'id': self.id,
+            'name': self.name,
+            'color': self.color,
+            'description': self.description,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'created_by': self.created_by,
+            'is_deleted': self.is_deleted
+        }
+
+class DocumentTag(db.Model):
+    """文档标签关联模型"""
+    __tablename__ = 'document_tags'
+    
+    id = db.Column(db.BigInteger, primary_key=True)
+    document_id = db.Column(db.BigInteger, db.ForeignKey('document_nodes.id'), nullable=False)
+    tag_id = db.Column(db.BigInteger, db.ForeignKey('tags.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_by = db.Column(db.String(100), default='system', comment='创建人')
+    
+    def to_dict(self):
+        """转换为字典格式"""
+        return {
+            'id': self.id,
+            'document_id': self.document_id,
+            'tag_id': self.tag_id,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'created_by': self.created_by
+        }
 
 class DocumentContent(db.Model):
     """文档内容模型"""

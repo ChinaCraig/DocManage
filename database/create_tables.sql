@@ -95,7 +95,45 @@ CREATE TABLE IF NOT EXISTS vector_records (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='向量化记录表';
 
 -- =====================================================
--- 4. 系统配置表
+-- 4. 标签表
+-- =====================================================
+CREATE TABLE IF NOT EXISTS tags (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(100) NOT NULL UNIQUE COMMENT '标签名称',
+    color VARCHAR(7) DEFAULT '#007bff' COMMENT '标签颜色（十六进制色值）',
+    description TEXT COMMENT '标签描述',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    created_by VARCHAR(100) DEFAULT 'system' COMMENT '创建人',
+    is_deleted TINYINT(1) DEFAULT 0 COMMENT '是否删除：0-未删除，1-已删除',
+    
+    -- 索引
+    INDEX idx_name (name),
+    INDEX idx_created_at (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='标签表';
+
+-- =====================================================
+-- 5. 文档标签关联表
+-- =====================================================
+CREATE TABLE IF NOT EXISTS document_tags (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    document_id BIGINT NOT NULL COMMENT '文档节点ID',
+    tag_id BIGINT NOT NULL COMMENT '标签ID',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_by VARCHAR(100) DEFAULT 'system' COMMENT '创建人',
+    
+    -- 索引
+    INDEX idx_document_id (document_id),
+    INDEX idx_tag_id (tag_id),
+    UNIQUE KEY uk_document_tag (document_id, tag_id),
+    
+    -- 外键约束
+    FOREIGN KEY (document_id) REFERENCES document_nodes(id) ON DELETE CASCADE,
+    FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='文档标签关联表';
+
+-- =====================================================
+-- 6. 系统配置表
 -- =====================================================
 CREATE TABLE IF NOT EXISTS system_configs (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -111,7 +149,7 @@ CREATE TABLE IF NOT EXISTS system_configs (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统配置表';
 
 -- =====================================================
--- 5. 插入默认配置数据
+-- 7. 插入默认配置数据
 -- =====================================================
 INSERT IGNORE INTO system_configs (config_key, config_value, config_type, description) VALUES 
 ('file_storage_path', 'uploads', 'string', '文件存储路径'),
@@ -123,7 +161,20 @@ INSERT IGNORE INTO system_configs (config_key, config_value, config_type, descri
 ('max_file_size', '104857600', 'int', '最大文件大小（100MB）');
 
 -- =====================================================
--- 6. 验证表结构
+-- 8. 插入默认标签数据
+-- =====================================================
+INSERT IGNORE INTO tags (name, color, description) VALUES 
+('重要', '#dc3545', '重要文档标签'),
+('紧急', '#fd7e14', '紧急处理文档'),
+('合同', '#28a745', '合同类文档'),
+('案例', '#17a2b8', '案例分析文档'),
+('法规', '#6f42c1', '法规条文文档'),
+('研究', '#20c997', '研究资料文档'),
+('草稿', '#6c757d', '草稿文档'),
+('已完成', '#007bff', '已完成的文档');
+
+-- =====================================================
+-- 9. 验证表结构
 -- =====================================================
 -- 显示所有表
 SHOW TABLES;
@@ -132,4 +183,6 @@ SHOW TABLES;
 -- DESCRIBE document_nodes;
 -- DESCRIBE document_contents;
 -- DESCRIBE vector_records;
+-- DESCRIBE tags;
+-- DESCRIBE document_tags;
 -- DESCRIBE system_configs; 

@@ -523,6 +523,15 @@ function createTreeNode(node, level) {
     item.className = `tree-item ${node.children && node.children.length > 0 ? 'has-children' : ''}`;
     item.dataset.nodeId = node.id;
     item.dataset.nodeType = node.type;
+    item.dataset.nodeName = node.name; // 添加节点名称用于搜索
+    
+    // 将标签信息存储到dataset中用于搜索
+    if (node.tags && node.tags.length > 0) {
+        const tagNames = node.tags.map(tag => tag.name).join('|');
+        item.dataset.nodeTags = tagNames;
+    } else {
+        item.dataset.nodeTags = '';
+    }
     
     // 显示文件大小（仅对文件显示）
     let sizeInfo = '';
@@ -530,11 +539,15 @@ function createTreeNode(node, level) {
         sizeInfo = `<span class="tree-item-size">${formatFileSize(node.file_size)}</span>`;
     }
     
+    // 显示标签
+    const tagsHtml = renderNodeTags(node.tags || []);
+    
     item.innerHTML = `
         ${expandButton}
         <div class="tree-item-content">
             <i class="bi ${icon} ${iconClass}"></i>
             <span class="tree-item-text">${node.name}</span>
+            ${tagsHtml}
             ${sizeInfo}
         </div>
     `;
@@ -996,20 +1009,122 @@ function showFileListPreview() {
     document.getElementById('totalSize').textContent = formatFileSize(totalSize);
     
     fileListDiv.innerHTML = '';
-    selectedFiles.forEach(file => {
-        const item = document.createElement('div');
-        item.className = 'list-group-item d-flex justify-content-between align-items-center';
-        item.innerHTML = `
-            <div>
-                <i class="bi ${getFileIconForName(file.name)}"></i>
-                <span class="ms-2">${file.name}</span>
-            </div>
-            <small class="text-muted">${formatFileSize(file.size)}</small>
-        `;
-        fileListDiv.appendChild(item);
-    });
+    
+    // 检查是否是文件夹上传（通过检查文件是否有webkitRelativePath）
+    const isFromFolder = selectedFiles.some(file => file.webkitRelativePath);
+    
+    // 如果是文件夹上传，需要显示文件夹结构
+    if (isFromFolder) {
+        // 构建文件夹树结构
+        const folderTree = buildFolderTree(selectedFiles);
+        
+        // 递归渲染文件夹树
+        renderFolderTreeRecursive(folderTree, fileListDiv, 0);
+    } else {
+        // 单个文件上传，保持原有逻辑
+        selectedFiles.forEach(file => {
+            const item = document.createElement('div');
+            item.className = 'list-group-item d-flex justify-content-between align-items-center';
+            item.innerHTML = `
+                <div>
+                    <i class="bi ${getFileIconForName(file.name)}"></i>
+                    <span class="ms-2">${file.name}</span>
+                </div>
+                <small class="text-muted">${formatFileSize(file.size)}</small>
+            `;
+            fileListDiv.appendChild(item);
+        });
+    }
     
     previewDiv.style.display = 'block';
+}
+
+// 新函数：构建文件夹树结构
+function buildFolderTree(files) {
+    const tree = {};
+    
+    files.forEach(file => {
+        const relativePath = file.webkitRelativePath || file.name;
+        const pathParts = relativePath.split('/');
+        
+        let currentLevel = tree;
+        
+        // 遍历路径的每一部分
+        for (let i = 0; i < pathParts.length; i++) {
+            const part = pathParts[i];
+            
+            if (i === pathParts.length - 1) {
+                // 这是文件
+                currentLevel[part] = {
+                    type: 'file',
+                    size: file.size,
+                    file: file,
+                    name: part
+                };
+            } else {
+                // 这是文件夹
+                if (!currentLevel[part]) {
+                    currentLevel[part] = {
+                        type: 'folder',
+                        name: part,
+                        children: {}
+                    };
+                }
+                currentLevel = currentLevel[part].children;
+            }
+        }
+    });
+    
+    return tree;
+}
+
+// 新函数：递归渲染文件夹树
+function renderFolderTreeRecursive(tree, container, level) {
+    // 获取当前层级的所有项目
+    const items = Object.keys(tree).map(key => ({
+        key: key,
+        ...tree[key]
+    }));
+    
+    // 排序：文件夹优先，然后按名称排序
+    items.sort((a, b) => {
+        if (a.type !== b.type) {
+            return a.type === 'folder' ? -1 : 1;
+        }
+        return a.name.localeCompare(b.name);
+    });
+    
+    // 渲染每个项目
+    items.forEach(item => {
+        const itemElement = document.createElement('div');
+        itemElement.className = 'list-group-item d-flex justify-content-between align-items-center';
+        
+        const indent = '&nbsp;'.repeat(level * 4);
+        let icon, sizeText;
+        
+        if (item.type === 'folder') {
+            icon = 'bi-folder';
+            sizeText = '';
+        } else {
+            icon = getFileIconForName(item.name);
+            sizeText = formatFileSize(item.size);
+        }
+        
+        itemElement.innerHTML = `
+            <div>
+                ${indent}<i class="bi ${icon}"></i>
+                <span class="ms-2">${item.name}</span>
+            </div>
+            <small class="text-muted">${sizeText}</small>
+        `;
+        
+        container.appendChild(itemElement);
+        
+        // 如果是文件夹，递归渲染子项目
+        if (item.type === 'folder' && item.children) {
+            renderFolderTreeRecursive(item.children, container, level + 1);
+        }
+    });
 }
 
 function clearSelectedFiles() {
@@ -1051,6 +1166,7 @@ function showUploadModal() {
         }
         
         clearSelectedFiles();
+        clearTagSelection('upload'); // 清空上传标签选择
         updateUploadAreaDisplay();
         modal.show();
     } catch (error) {
@@ -1063,6 +1179,7 @@ function showCreateFolderModal() {
     const modal = new bootstrap.Modal(document.getElementById('createFolderModal'));
     document.getElementById('folderName').value = '';
     document.getElementById('folderDescription').value = '';
+    clearTagSelection('folder'); // 清空文件夹标签选择
     modal.show();
 }
 
@@ -1092,6 +1209,9 @@ async function uploadFile() {
         showSuccess('文件上传成功');
         bootstrap.Modal.getInstance(document.getElementById('uploadModal')).hide();
         
+        // 清空标签选择
+        clearTagSelection('upload');
+        
         // 重新加载文档树和统计信息
         await loadFileTree();
         loadStats();
@@ -1119,6 +1239,12 @@ async function uploadSingleFile(file, description) {
         formData.append('parent_id', currentParentId);
     }
     
+    // 添加标签数据
+    const tagIds = getTagIds(selectedUploadTags);
+    if (tagIds.length > 0) {
+        formData.append('tag_ids', tagIds.join(','));
+    }
+    
     const response = await fetch('/api/upload/', {
         method: 'POST',
         body: formData
@@ -1142,6 +1268,12 @@ async function uploadBatch(files, description) {
     formData.append('description', description);
     if (currentParentId) {
         formData.append('parent_id', currentParentId);
+    }
+    
+    // 添加标签数据
+    const tagIds = getTagIds(selectedUploadTags);
+    if (tagIds.length > 0) {
+        formData.append('tag_ids', tagIds.join(','));
     }
     
     const response = await fetch('/api/upload/batch', {
@@ -1173,6 +1305,12 @@ async function createFolder() {
             requestData.parent_id = currentParentId;
         }
         
+        // 添加标签数据
+        const tagIds = getTagIds(selectedFolderTags);
+        if (tagIds.length > 0) {
+            requestData.tag_ids = tagIds;
+        }
+        
         const response = await fetch('/api/documents/folder', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1184,6 +1322,9 @@ async function createFolder() {
         if (result.success) {
             showSuccess('文件夹创建成功');
             bootstrap.Modal.getInstance(document.getElementById('createFolderModal')).hide();
+            
+            // 清空标签选择
+            clearTagSelection('folder');
             
             // 重新加载文档树
             await loadFileTree();
@@ -1207,6 +1348,13 @@ function editDocument(docId, name, description, type) {
     document.getElementById('editDocumentName').value = name;
     document.getElementById('editDocumentDescription').value = description || '';
     
+    // 加载文档的标签信息
+    if (selectedNode && selectedNode.tags) {
+        setEditTags(selectedNode.tags);
+    } else {
+        clearTagSelection('edit');
+    }
+    
     const title = type === 'folder' ? '编辑文件夹' : '编辑文件';
     document.getElementById('editDocumentTitle').innerHTML = 
         `<i class="bi bi-pencil me-2"></i>${title}`;
@@ -1229,10 +1377,17 @@ async function updateDocument() {
     const previousSelectedNodeId = selectedNode ? selectedNode.id : null;
     
     try {
+        // 准备更新数据，包含标签
+        const updateData = { 
+            name, 
+            description,
+            tag_ids: getTagIds(selectedEditTags)
+        };
+        
         const response = await fetch(`/api/documents/${docId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, description })
+            body: JSON.stringify(updateData)
         });
         
         const result = await response.json();
@@ -1240,6 +1395,9 @@ async function updateDocument() {
         if (result.success) {
             showSuccess('更新成功');
             bootstrap.Modal.getInstance(document.getElementById('editDocumentModal')).hide();
+            
+            // 清空标签选择
+            clearTagSelection('edit');
             
             // 重新加载文档树
             await loadFileTree();
@@ -1554,6 +1712,26 @@ function filterDocumentTree(searchTerm) {
     const searchTermLower = searchTerm.toLowerCase();
     let hasVisibleItems = false;
     
+    // 检测搜索类型
+    let isTagSearch = false;
+    let tagSearchTerm = '';
+    let nameSearchTerm = '';
+    
+    // 解析搜索语法
+    if (searchTerm.includes('tag:')) {
+        // 支持标签搜索语法：tag:标签名
+        const tagMatch = searchTerm.match(/tag:([^\s]+)/);
+        if (tagMatch) {
+            isTagSearch = true;
+            tagSearchTerm = tagMatch[1].toLowerCase();
+            // 移除tag:部分，保留其他搜索词用于文件名搜索
+            nameSearchTerm = searchTerm.replace(/tag:[^\s]+/g, '').trim().toLowerCase();
+        }
+    } else {
+        // 普通搜索，同时搜索文件名和标签
+        nameSearchTerm = searchTermLower;
+    }
+    
     // 首先隐藏所有节点
     document.querySelectorAll('.tree-node').forEach(node => {
         node.style.display = 'none';
@@ -1563,15 +1741,47 @@ function filterDocumentTree(searchTerm) {
     const matchingNodes = [];
     treeItems.forEach(item => {
         const nodeName = item.dataset.nodeName || '';
-        const matches = nodeName.toLowerCase().includes(searchTermLower);
+        const nodeTags = item.dataset.nodeTags || '';
+        
+        let matches = false;
+        let matchType = '';
+        
+        if (isTagSearch) {
+            // 标签搜索模式
+            const tagMatches = nodeTags.toLowerCase().includes(tagSearchTerm);
+            const nameMatches = nameSearchTerm ? nodeName.toLowerCase().includes(nameSearchTerm) : true;
+            
+            if (tagMatches && nameMatches) {
+                matches = true;
+                matchType = tagMatches ? 'tag' : 'name';
+            }
+        } else {
+            // 普通搜索模式 - 在文件名和标签中都搜索
+            const nameMatches = nodeName.toLowerCase().includes(nameSearchTerm);
+            const tagMatches = nodeTags.toLowerCase().includes(nameSearchTerm);
+            
+            if (nameMatches || tagMatches) {
+                matches = true;
+                matchType = nameMatches ? 'name' : 'tag';
+            }
+        }
         
         if (matches) {
             matchingNodes.push(item);
             item.classList.add('search-match');
-            highlightSearchTerm(item, searchTerm);
+            item.dataset.matchType = matchType;
+            
+            // 高亮搜索结果
+            if (matchType === 'name') {
+                highlightSearchTerm(item, isTagSearch && nameSearchTerm ? nameSearchTerm : searchTerm);
+            } else if (matchType === 'tag') {
+                highlightTagMatch(item, isTagSearch ? tagSearchTerm : nameSearchTerm);
+            }
+            
             hasVisibleItems = true;
         } else {
             item.classList.remove('search-match');
+            delete item.dataset.matchType;
         }
     });
     
@@ -1583,7 +1793,7 @@ function filterDocumentTree(searchTerm) {
     
     // 如果没有匹配项，显示提示
     if (!hasVisibleItems) {
-        showNoSearchResults();
+        showNoSearchResults(searchTerm, isTagSearch);
     }
 }
 
@@ -1603,6 +1813,28 @@ function highlightSearchTerm(item, searchTerm) {
     }
 }
 
+function highlightTagMatch(item, searchTerm) {
+    const tagElements = item.querySelectorAll('.node-tag');
+    const searchTermLower = searchTerm.toLowerCase();
+    
+    tagElements.forEach(tagElement => {
+        const tagText = tagElement.textContent || '';
+        const tagTextLower = tagText.toLowerCase();
+        
+        if (tagTextLower.includes(searchTermLower)) {
+            const index = tagTextLower.indexOf(searchTermLower);
+            if (index !== -1) {
+                const beforeMatch = tagText.substring(0, index);
+                const match = tagText.substring(index, index + searchTerm.length);
+                const afterMatch = tagText.substring(index + searchTerm.length);
+                
+                tagElement.innerHTML = `${beforeMatch}<span class="highlight">${match}</span>${afterMatch}`;
+                tagElement.classList.add('tag-search-match');
+            }
+        }
+    });
+}
+
 function clearSearchHighlight() {
     document.querySelectorAll('.tree-item').forEach(item => {
         const textSpan = item.querySelector('.tree-item-text');
@@ -1611,6 +1843,16 @@ function clearSearchHighlight() {
             textSpan.textContent = originalText;
         }
         item.classList.remove('search-match');
+        delete item.dataset.matchType;
+        
+        // 清除标签高亮
+        const tagElements = item.querySelectorAll('.node-tag');
+        tagElements.forEach(tagElement => {
+            const originalTagText = tagElement.dataset.originalText || tagElement.textContent;
+            tagElement.textContent = originalTagText;
+            tagElement.classList.remove('tag-search-match');
+            tagElement.dataset.originalText = originalTagText; // 保存原始文本以备后用
+        });
     });
 }
 
@@ -1632,9 +1874,58 @@ function expandParentNodes(node) {
     }
 }
 
-function showNoSearchResults() {
-    // 可以在这里添加"无搜索结果"的提示
-    console.log('没有找到匹配的文档');
+function showNoSearchResults(searchTerm, isTagSearch) {
+    // 在文档树区域显示搜索提示
+    const fileTree = document.getElementById('fileTree') || document.querySelector('.file-tree');
+    if (fileTree) {
+        const existingNoResults = fileTree.querySelector('.no-search-results');
+        if (existingNoResults) {
+            existingNoResults.remove();
+        }
+        
+        const noResultsDiv = document.createElement('div');
+        noResultsDiv.className = 'no-search-results text-center p-4';
+        
+        let hintMessage = '';
+        if (isTagSearch) {
+            hintMessage = `
+                <div class="mb-3">
+                    <i class="bi bi-search text-muted" style="font-size: 2rem;"></i>
+                </div>
+                <h6 class="text-muted">未找到标签匹配结果</h6>
+                <p class="text-muted small mb-2">搜索词: "${searchTerm}"</p>
+                <div class="text-muted small">
+                    <p>搜索提示:</p>
+                    <ul class="list-unstyled">
+                        <li>• 使用 <code>tag:标签名</code> 搜索特定标签</li>
+                        <li>• 使用 <code>tag:重要 文档名</code> 组合搜索</li>
+                        <li>• 直接输入关键词搜索文件名和标签</li>
+                    </ul>
+                </div>
+            `;
+        } else {
+            hintMessage = `
+                <div class="mb-3">
+                    <i class="bi bi-search text-muted" style="font-size: 2rem;"></i>
+                </div>
+                <h6 class="text-muted">未找到匹配结果</h6>
+                <p class="text-muted small mb-2">搜索词: "${searchTerm}"</p>
+                <div class="text-muted small">
+                    <p>搜索提示:</p>
+                    <ul class="list-unstyled">
+                        <li>• 尝试使用其他关键词</li>
+                        <li>• 使用 <code>tag:标签名</code> 搜索标签</li>
+                        <li>• 检查拼写是否正确</li>
+                    </ul>
+                </div>
+            `;
+        }
+        
+        noResultsDiv.innerHTML = hintMessage;
+        fileTree.appendChild(noResultsDiv);
+    }
+    
+    console.log(`没有找到匹配的文档: ${searchTerm} (${isTagSearch ? '标签搜索' : '普通搜索'})`);
 }
 
 function clearTreeSearch() {
@@ -1644,6 +1935,15 @@ function clearTreeSearch() {
     document.querySelectorAll('.tree-node').forEach(node => {
         node.style.display = 'block';
     });
+    
+    // 清除搜索提示
+    const fileTree = document.getElementById('fileTree') || document.querySelector('.file-tree');
+    if (fileTree) {
+        const noResults = fileTree.querySelector('.no-search-results');
+        if (noResults) {
+            noResults.remove();
+        }
+    }
 }
 
 function getFileIcon(fileType) {
@@ -2575,6 +2875,7 @@ function showCreateFolderModal() {
     const modal = new bootstrap.Modal(document.getElementById('createFolderModal'));
     document.getElementById('folderName').value = '';
     document.getElementById('folderDescription').value = '';
+    clearTagSelection('folder'); // 清空文件夹标签选择
     modal.show();
 }
 
@@ -2719,10 +3020,305 @@ function showSearchStrategyHint(strategy, query) {
 }
 
 function hideSearchStrategyHint() {
-    const hintElement = document.getElementById('searchStrategyHint');
-    if (hintElement) {
-        setTimeout(() => {
-            hintElement.style.display = 'none';
-        }, 2000); // 2秒后自动隐藏
+    const hint = document.getElementById('searchStrategyHint');
+    if (hint) {
+        hint.style.display = 'none';
     }
 }
+
+// ============ 标签管理功能 ============
+
+// 全局变量
+let selectedUploadTags = [];
+let selectedEditTags = [];
+let selectedFolderTags = []; // 新增：文件夹标签选择
+let availableTags = [];
+
+// 初始化标签功能
+async function initTagSystem() {
+    try {
+        await loadAvailableTags();
+        initTagSelectors();
+    } catch (error) {
+        console.error('初始化标签系统失败:', error);
+    }
+}
+
+// 加载可用标签
+async function loadAvailableTags() {
+    try {
+        const response = await fetch('/api/tags/');
+        const result = await response.json();
+        
+        if (result.success) {
+            availableTags = result.data;
+        } else {
+            console.error('加载标签失败:', result.error);
+        }
+    } catch (error) {
+        console.error('加载标签失败:', error);
+    }
+}
+
+// 初始化标签选择器
+function initTagSelectors() {
+    // 上传标签选择器
+    initTagSelector('uploadTagInput', 'uploadTagDropdown', 'uploadSelectedTags', selectedUploadTags);
+    
+    // 编辑标签选择器
+    initTagSelector('editTagInput', 'editTagDropdown', 'editSelectedTags', selectedEditTags);
+    
+    // 文件夹标签选择器
+    initTagSelector('folderTagInput', 'folderTagDropdown', 'folderSelectedTags', selectedFolderTags);
+}
+
+// 初始化单个标签选择器
+function initTagSelector(inputId, dropdownId, selectedTagsId, selectedArray) {
+    const input = document.getElementById(inputId);
+    const dropdown = document.getElementById(dropdownId);
+    const selectedTagsContainer = document.getElementById(selectedTagsId);
+    
+    if (!input || !dropdown || !selectedTagsContainer) {
+        return;
+    }
+    
+    // 输入事件
+    input.addEventListener('input', function() {
+        const query = this.value.trim();
+        showTagDropdown(query, dropdown, selectedArray, inputId);
+    });
+    
+    // 焦点事件
+    input.addEventListener('focus', function() {
+        const query = this.value.trim();
+        showTagDropdown(query, dropdown, selectedArray, inputId);
+    });
+    
+    // 失焦事件（延迟隐藏，允许点击下拉项）
+    input.addEventListener('blur', function() {
+        setTimeout(() => {
+            dropdown.style.display = 'none';
+        }, 200);
+    });
+    
+    // 按键事件
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const query = this.value.trim();
+            if (query) {
+                createAndSelectTag(query, selectedArray, selectedTagsId, inputId);
+                this.value = '';
+                dropdown.style.display = 'none';
+            }
+        } else if (e.key === 'Escape') {
+            dropdown.style.display = 'none';
+        }
+    });
+}
+
+// 显示标签下拉框
+function showTagDropdown(query, dropdown, selectedArray, inputId) {
+    const selectedIds = selectedArray.map(tag => tag.id);
+    let filteredTags = availableTags.filter(tag => !selectedIds.includes(tag.id));
+    
+    if (query) {
+        filteredTags = filteredTags.filter(tag => 
+            tag.name.toLowerCase().includes(query.toLowerCase())
+        );
+    }
+    
+    let html = '';
+    
+    // 显示匹配的标签
+    filteredTags.forEach(tag => {
+        html += `
+            <div class="tag-dropdown-item" onclick="selectTag(${tag.id}, '${tag.name}', '${tag.color}', '${inputId}')">
+                <div class="tag-color-indicator" style="background-color: ${tag.color}"></div>
+                <span>${tag.name}</span>
+            </div>
+        `;
+    });
+    
+    // 如果有查询词且不存在完全匹配的标签，显示创建新标签选项
+    if (query && !availableTags.some(tag => tag.name.toLowerCase() === query.toLowerCase())) {
+        html += `
+            <div class="tag-dropdown-item create-new" onclick="createAndSelectTag('${query}', getSelectedArrayByInput('${inputId}'), '${getSelectedTagsId(inputId)}', '${inputId}')">
+                <i class="bi bi-plus-circle"></i>
+                <span>创建标签 "${query}"</span>
+            </div>
+        `;
+    }
+    
+    dropdown.innerHTML = html;
+    dropdown.style.display = html ? 'block' : 'none';
+}
+
+// 选择标签
+function selectTag(tagId, tagName, tagColor, inputId) {
+    const selectedArray = getSelectedArrayByInput(inputId);
+    const selectedTagsId = getSelectedTagsId(inputId);
+    
+    // 检查是否已选择
+    if (selectedArray.some(tag => tag.id === tagId)) {
+        return;
+    }
+    
+    selectedArray.push({ id: tagId, name: tagName, color: tagColor });
+    updateSelectedTagsDisplay(selectedTagsId, selectedArray);
+    
+    // 清空输入框并隐藏下拉框
+    document.getElementById(inputId).value = '';
+    document.getElementById(getDropdownId(inputId)).style.display = 'none';
+}
+
+// 创建并选择新标签
+async function createAndSelectTag(tagName, selectedArray, selectedTagsId, inputId) {
+    try {
+        // 生成随机颜色
+        const colors = ['#007bff', '#28a745', '#dc3545', '#ffc107', '#17a2b8', '#6f42c1', '#fd7e14', '#20c997'];
+        const randomColor = colors[Math.floor(Math.random() * colors.length)];
+        
+        const response = await fetch('/api/tags/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: tagName,
+                color: randomColor,
+                description: `自动创建的标签`
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            const newTag = result.data;
+            
+            // 添加到可用标签列表
+            availableTags.push(newTag);
+            
+            // 选择新创建的标签
+            selectedArray.push({ id: newTag.id, name: newTag.name, color: newTag.color });
+            updateSelectedTagsDisplay(selectedTagsId, selectedArray);
+            
+            showSuccess(`标签 "${tagName}" 创建成功`);
+        } else {
+            showError('创建标签失败: ' + result.error);
+        }
+    } catch (error) {
+        console.error('创建标签失败:', error);
+        showError('创建标签失败');
+    }
+}
+
+// 移除标签
+function removeTag(tagId, selectedArray, selectedTagsId) {
+    const index = selectedArray.findIndex(tag => tag.id === tagId);
+    if (index > -1) {
+        selectedArray.splice(index, 1);
+        updateSelectedTagsDisplay(selectedTagsId, selectedArray);
+    }
+}
+
+// 更新已选择标签显示
+function updateSelectedTagsDisplay(selectedTagsId, selectedArray) {
+    const container = document.getElementById(selectedTagsId);
+    if (!container) return;
+    
+    container.innerHTML = selectedArray.map(tag => `
+        <span class="tag-badge" style="background-color: ${tag.color}">
+            ${tag.name}
+            <span class="remove-tag" onclick="removeTag(${tag.id}, getSelectedArrayByInput('${getInputIdBySelectedTags(selectedTagsId)}'), '${selectedTagsId}')">&times;</span>
+        </span>
+    `).join('');
+}
+
+// 根据输入框ID获取对应的选中标签数组
+function getSelectedArrayByInput(inputId) {
+    switch(inputId) {
+        case 'uploadTagInput': return selectedUploadTags;
+        case 'editTagInput': return selectedEditTags;
+        case 'folderTagInput': return selectedFolderTags;
+        default: return [];
+    }
+}
+
+// 根据输入框ID获取对应的已选择标签容器ID
+function getSelectedTagsId(inputId) {
+    switch(inputId) {
+        case 'uploadTagInput': return 'uploadSelectedTags';
+        case 'editTagInput': return 'editSelectedTags';
+        case 'folderTagInput': return 'folderSelectedTags';
+        default: return '';
+    }
+}
+
+// 根据输入框ID获取对应的下拉框ID
+function getDropdownId(inputId) {
+    switch(inputId) {
+        case 'uploadTagInput': return 'uploadTagDropdown';
+        case 'editTagInput': return 'editTagDropdown';
+        case 'folderTagInput': return 'folderTagDropdown';
+        default: return '';
+    }
+}
+
+// 根据已选择标签容器ID获取对应的输入框ID
+function getInputIdBySelectedTags(selectedTagsId) {
+    switch(selectedTagsId) {
+        case 'uploadSelectedTags': return 'uploadTagInput';
+        case 'editSelectedTags': return 'editTagInput';
+        case 'folderSelectedTags': return 'folderTagInput';
+        default: return '';
+    }
+}
+
+// 清空标签选择
+function clearTagSelection(type) {
+    if (type === 'upload') {
+        selectedUploadTags.length = 0;
+        updateSelectedTagsDisplay('uploadSelectedTags', selectedUploadTags);
+        document.getElementById('uploadTagInput').value = '';
+    } else if (type === 'edit') {
+        selectedEditTags.length = 0;
+        updateSelectedTagsDisplay('editSelectedTags', selectedEditTags);
+        document.getElementById('editTagInput').value = '';
+    } else if (type === 'folder') {
+        selectedFolderTags.length = 0;
+        updateSelectedTagsDisplay('folderSelectedTags', selectedFolderTags);
+        const folderTagInput = document.getElementById('folderTagInput');
+        if (folderTagInput) {
+            folderTagInput.value = '';
+        }
+    }
+}
+
+// 设置编辑标签
+function setEditTags(tags) {
+    selectedEditTags.length = 0;
+    if (tags && Array.isArray(tags)) {
+        selectedEditTags.push(...tags);
+        updateSelectedTagsDisplay('editSelectedTags', selectedEditTags);
+    }
+}
+
+// 获取标签ID数组
+function getTagIds(selectedArray) {
+    return selectedArray.map(tag => tag.id);
+}
+
+// 在文档树节点中显示标签
+function renderNodeTags(tags) {
+    if (!tags || tags.length === 0) {
+        return '';
+    }
+    
+    return `<span class="node-tags">${tags.map(tag => 
+        `<span class="node-tag" style="background-color: ${tag.color}">${tag.name}</span>`
+    ).join('')}</span>`;
+}
+
+// 页面加载时初始化标签系统
+document.addEventListener('DOMContentLoaded', function() {
+    initTagSystem();
+});

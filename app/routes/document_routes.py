@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify, send_file, abort
 from app import db
-from app.models import DocumentNode, SystemConfig
+from app.models import DocumentNode, SystemConfig, Tag, DocumentTag
 import logging
 import os
 
@@ -95,6 +95,7 @@ def create_folder():
         name = data.get('name')
         parent_id = data.get('parent_id')
         description = data.get('description', '')
+        tag_ids = data.get('tag_ids', [])
         
         if not name:
             return jsonify({
@@ -124,6 +125,22 @@ def create_folder():
                 'error': '同级目录下已存在相同名称的文件夹'
             }), 400
         
+        # 验证标签（如果提供了标签）
+        if tag_ids:
+            existing_tags = Tag.query.filter(
+                Tag.id.in_(tag_ids),
+                Tag.is_deleted == False
+            ).all()
+            
+            existing_tag_ids = [tag.id for tag in existing_tags]
+            invalid_tag_ids = set(tag_ids) - set(existing_tag_ids)
+            
+            if invalid_tag_ids:
+                return jsonify({
+                    'success': False,
+                    'error': f'标签ID {list(invalid_tag_ids)} 不存在或已删除'
+                }), 400
+        
         # 创建文件夹
         folder = DocumentNode(
             name=name,
@@ -133,11 +150,21 @@ def create_folder():
         )
         
         db.session.add(folder)
+        db.session.flush()  # 获取文件夹ID但不提交
+        
+        # 添加标签关联
+        for tag_id in tag_ids:
+            doc_tag = DocumentTag(document_id=folder.id, tag_id=tag_id)
+            db.session.add(doc_tag)
+        
         db.session.commit()
+        
+        # 重新查询以获取完整的文件夹信息（包括标签）
+        created_folder = DocumentNode.query.get(folder.id)
         
         return jsonify({
             'success': True,
-            'data': folder.to_dict()
+            'data': created_folder.to_dict()
         })
         
     except Exception as e:
@@ -196,15 +223,97 @@ def update_document(doc_id):
             
             doc.parent_id = new_parent_id
         
+        # 处理标签更新
+        if 'tag_ids' in data:
+            tag_ids = data['tag_ids']
+            if isinstance(tag_ids, list):
+                # 验证标签是否存在
+                existing_tags = Tag.query.filter(
+                    Tag.id.in_(tag_ids),
+                    Tag.is_deleted == False
+                ).all()
+                
+                existing_tag_ids = [tag.id for tag in existing_tags]
+                invalid_tag_ids = set(tag_ids) - set(existing_tag_ids)
+                
+                if invalid_tag_ids:
+                    return jsonify({
+                        'success': False,
+                        'error': f'标签ID {list(invalid_tag_ids)} 不存在或已删除'
+                    }), 400
+                
+                # 清除现有标签关联
+                DocumentTag.query.filter_by(document_id=doc_id).delete()
+                
+                # 添加新的标签关联
+                for tag_id in tag_ids:
+                    doc_tag = DocumentTag(document_id=doc_id, tag_id=tag_id)
+                    db.session.add(doc_tag)
+        
         db.session.commit()
+        
+        # 重新查询以获取更新后的标签信息
+        updated_doc = DocumentNode.query.get(doc_id)
         
         return jsonify({
             'success': True,
-            'data': doc.to_dict()
+            'data': updated_doc.to_dict()
         })
         
     except Exception as e:
         logger.error(f"更新文档失败: {str(e)}")
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@document_bp.route('/<int:doc_id>/tags', methods=['POST'])
+def update_document_tags(doc_id):
+    """更新文档标签"""
+    try:
+        doc = DocumentNode.query.get_or_404(doc_id)
+        data = request.get_json()
+        
+        tag_ids = data.get('tag_ids', [])
+        
+        if tag_ids:
+            # 验证标签是否存在
+            existing_tags = Tag.query.filter(
+                Tag.id.in_(tag_ids),
+                Tag.is_deleted == False
+            ).all()
+            
+            existing_tag_ids = [tag.id for tag in existing_tags]
+            invalid_tag_ids = set(tag_ids) - set(existing_tag_ids)
+            
+            if invalid_tag_ids:
+                return jsonify({
+                    'success': False,
+                    'error': f'标签ID {list(invalid_tag_ids)} 不存在或已删除'
+                }), 400
+        
+        # 清除现有标签关联
+        DocumentTag.query.filter_by(document_id=doc_id).delete()
+        
+        # 添加新的标签关联
+        for tag_id in tag_ids:
+            doc_tag = DocumentTag(document_id=doc_id, tag_id=tag_id)
+            db.session.add(doc_tag)
+        
+        db.session.commit()
+        
+        # 重新查询以获取更新后的标签信息
+        updated_doc = DocumentNode.query.get(doc_id)
+        
+        return jsonify({
+            'success': True,
+            'data': updated_doc.to_dict(),
+            'message': '标签更新成功'
+        })
+        
+    except Exception as e:
+        logger.error(f"更新文档标签失败: {str(e)}")
         db.session.rollback()
         return jsonify({
             'success': False,

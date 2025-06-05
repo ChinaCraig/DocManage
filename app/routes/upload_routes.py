@@ -3,7 +3,7 @@ import uuid
 from werkzeug.utils import secure_filename
 from flask import Blueprint, request, jsonify, current_app
 from app import db
-from app.models import DocumentNode, DocumentContent, VectorRecord, SystemConfig
+from app.models import DocumentNode, DocumentContent, VectorRecord, SystemConfig, Tag, DocumentTag
 from app.services import PDFService, WordService, ExcelService, ImageService, VideoService
 import logging
 from app.services.vectorization import VectorServiceAdapter
@@ -33,6 +33,34 @@ FILE_TYPE_MAPPING = {
     '.txt': 'pdf'  # 临时将txt文件当作pdf处理
 }
 
+# 隐藏文件列表
+HIDDEN_FILES = {
+    '.DS_Store',
+    'Thumbs.db',
+    '.gitignore',
+    '.git',
+    '__MACOSX',
+    '.svn',
+    '.htaccess',
+    'desktop.ini'
+}
+
+def is_hidden_file(filename):
+    """检查是否为隐藏文件"""
+    # 检查文件名是否在隐藏文件列表中
+    if filename in HIDDEN_FILES:
+        return True
+    
+    # 检查是否以点开头（Unix隐藏文件）
+    if filename.startswith('.'):
+        return True
+    
+    # 检查是否以~结尾（临时文件）
+    if filename.endswith('~'):
+        return True
+    
+    return False
+
 def get_file_service(file_type):
     """根据文件类型获取对应的服务"""
     services = {
@@ -43,6 +71,33 @@ def get_file_service(file_type):
         'video': VideoService()
     }
     return services.get(file_type)
+
+def _add_tags_to_document(document_id, tag_ids):
+    """为文档添加标签"""
+    if not tag_ids:
+        return
+    
+    # 验证标签是否存在
+    existing_tags = Tag.query.filter(
+        Tag.id.in_(tag_ids),
+        Tag.is_deleted == False
+    ).all()
+    
+    existing_tag_ids = [tag.id for tag in existing_tags]
+    
+    # 检查已经关联的标签，避免重复
+    existing_associations = DocumentTag.query.filter(
+        DocumentTag.document_id == document_id,
+        DocumentTag.tag_id.in_(existing_tag_ids)
+    ).all()
+    
+    already_associated_tag_ids = [assoc.tag_id for assoc in existing_associations]
+    
+    # 只添加还没有关联的标签
+    for tag_id in existing_tag_ids:
+        if tag_id not in already_associated_tag_ids:
+            doc_tag = DocumentTag(document_id=document_id, tag_id=tag_id)
+            db.session.add(doc_tag)
 
 @upload_bp.route('/', methods=['POST'])
 def upload_file():
@@ -62,9 +117,28 @@ def upload_file():
                 'error': '没有选择文件'
             }), 400
         
+        # 检查是否为隐藏文件
+        if is_hidden_file(file.filename):
+            return jsonify({
+                'success': False,
+                'error': f'不允许上传隐藏文件: {file.filename}'
+            }), 400
+        
         # 获取其他参数
         parent_id = request.form.get('parent_id', type=int)
         description = request.form.get('description', '')
+        tag_ids_str = request.form.get('tag_ids', '')
+        
+        # 解析标签ID
+        tag_ids = []
+        if tag_ids_str:
+            try:
+                tag_ids = [int(x) for x in tag_ids_str.split(',') if x.strip()]
+            except ValueError:
+                return jsonify({
+                    'success': False,
+                    'error': '标签ID格式错误'
+                }), 400
         
         # 检查父节点
         if parent_id:
@@ -120,6 +194,11 @@ def upload_file():
         )
         
         db.session.add(document)
+        db.session.flush()  # 获取document.id
+        
+        # 添加标签
+        _add_tags_to_document(document.id, tag_ids)
+        
         db.session.commit()
         
         # 异步处理文件内容提取（这里简化为同步处理）
@@ -128,9 +207,12 @@ def upload_file():
         except Exception as e:
             logger.warning(f"文件内容处理失败: {str(e)}")
         
+        # 重新查询以获取标签信息
+        updated_doc = DocumentNode.query.get(document.id)
+        
         return jsonify({
             'success': True,
-            'data': document.to_dict(),
+            'data': updated_doc.to_dict(),
             'message': '文件上传成功'
         })
         
@@ -282,6 +364,18 @@ def upload_batch():
         parent_id = request.form.get('parent_id', type=int)
         description = request.form.get('description', '')
         file_paths = request.form.getlist('file_paths[]')  # 文件相对路径
+        tag_ids_str = request.form.get('tag_ids', '')
+        
+        # 解析标签ID
+        tag_ids = []
+        if tag_ids_str:
+            try:
+                tag_ids = [int(x) for x in tag_ids_str.split(',') if x.strip()]
+            except ValueError:
+                return jsonify({
+                    'success': False,
+                    'error': '标签ID格式错误'
+                }), 400
         
         # 检查父节点
         if parent_id:
@@ -294,10 +388,24 @@ def upload_batch():
         
         uploaded_files = []
         created_folders = {}  # 缓存已创建的文件夹
+        skipped_files = []  # 记录跳过的文件
         
-        # 按文件路径深度排序，确保父文件夹先创建
-        file_data = list(zip(files, file_paths))
-        file_data.sort(key=lambda x: x[1].count('/'))
+        # 过滤隐藏文件并按文件路径深度排序，确保父文件夹先创建
+        file_data = []
+        for file, file_path in zip(files, file_paths):
+            filename = file_path.split('/')[-1] if file_path else file.filename
+            
+            # 检查是否为隐藏文件
+            if is_hidden_file(filename):
+                skipped_files.append({
+                    'name': filename,
+                    'reason': '隐藏文件，已跳过'
+                })
+                continue
+            
+            file_data.append((file, file_path))
+        
+        file_data.sort(key=lambda x: x[1].count('/') if x[1] else 0)
         
         for file, file_path in file_data:
             try:
@@ -306,6 +414,14 @@ def upload_batch():
                 filename = path_parts[-1]
                 folder_path_parts = path_parts[:-1]
                 
+                # 再次检查文件名，防止路径中包含隐藏文件
+                if is_hidden_file(filename):
+                    skipped_files.append({
+                        'name': filename,
+                        'reason': '隐藏文件，已跳过'
+                    })
+                    continue
+                
                 # 创建文件夹层级
                 current_parent_id = parent_id
                 current_path = ""
@@ -313,6 +429,10 @@ def upload_batch():
                 for folder_name in folder_path_parts:
                     if not folder_name:  # 跳过空名称
                         continue
+                    
+                    # 跳过隐藏文件夹
+                    if is_hidden_file(folder_name):
+                        break
                         
                     current_path = f"{current_path}/{folder_name}" if current_path else folder_name
                     
@@ -328,6 +448,9 @@ def upload_batch():
                         
                         if existing_folder:
                             folder_id = existing_folder.id
+                            # 如果文件夹已存在，为其添加标签（合并标签）
+                            if tag_ids:
+                                _add_tags_to_document(existing_folder.id, tag_ids)
                         else:
                             # 创建新文件夹
                             folder = DocumentNode(
@@ -339,6 +462,10 @@ def upload_batch():
                             db.session.add(folder)
                             db.session.flush()  # 获取ID但不提交
                             folder_id = folder.id
+                            
+                            # 为新创建的文件夹添加标签
+                            if tag_ids:
+                                _add_tags_to_document(folder_id, tag_ids)
                         
                         created_folders[current_path] = folder_id
                     else:
@@ -347,7 +474,7 @@ def upload_batch():
                     current_parent_id = folder_id
                 
                 # 处理文件
-                if file.filename:
+                if file.filename and filename:
                     # 获取文件信息
                     original_filename = filename
                     secure_name = secure_filename(filename)
@@ -357,7 +484,10 @@ def upload_batch():
                     
                     # 检查文件类型
                     if file_ext not in FILE_TYPE_MAPPING:
-                        logger.warning(f"跳过不支持的文件类型: {original_filename}")
+                        skipped_files.append({
+                            'name': original_filename,
+                            'reason': f'不支持的文件类型: {file_ext}'
+                        })
                         continue
                     
                     file_type = FILE_TYPE_MAPPING[file_ext]
@@ -389,6 +519,9 @@ def upload_batch():
                     db.session.add(document)
                     db.session.flush()  # 获取ID但不提交
                     
+                    # 添加标签
+                    _add_tags_to_document(document.id, tag_ids)
+                    
                     uploaded_files.append({
                         'id': document.id,
                         'name': original_filename,
@@ -405,19 +538,28 @@ def upload_batch():
             
             except Exception as e:
                 logger.error(f"处理文件失败 {file.filename}: {str(e)}")
+                skipped_files.append({
+                    'name': file.filename,
+                    'reason': f'处理失败: {str(e)}'
+                })
                 continue
         
         # 提交所有更改
         db.session.commit()
+        
+        result_message = f'批量上传完成，共上传 {len(uploaded_files)} 个文件，创建 {len(created_folders)} 个文件夹'
+        if skipped_files:
+            result_message += f'，跳过 {len(skipped_files)} 个文件'
         
         return jsonify({
             'success': True,
             'data': {
                 'uploaded_files': uploaded_files,
                 'created_folders': len(created_folders),
-                'total_files': len(uploaded_files)
+                'total_files': len(uploaded_files),
+                'skipped_files': skipped_files
             },
-            'message': f'批量上传完成，共上传 {len(uploaded_files)} 个文件，创建 {len(created_folders)} 个文件夹'
+            'message': result_message
         })
         
     except Exception as e:
