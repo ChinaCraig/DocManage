@@ -218,7 +218,7 @@ class BaseVectorizer(ABC):
             logger.error(f"Failed to insert vectors: {e}")
             return False
     
-    def search_similar(self, query_text: str, top_k: int = 10, document_id: str = None) -> List[Dict[str, Any]]:
+    def search_similar(self, query_text: str, top_k: int = 10, document_id: str = None, min_score: float = 0.0) -> List[Dict[str, Any]]:
         """搜索相似文档"""
         if not self.is_available:
             logger.info("Vector search skipped - service not available")
@@ -256,23 +256,159 @@ class BaseVectorizer(ABC):
                 output_fields=["document_id", "chunk_id", "text"]
             )
             
-            # 处理结果
+            # 处理结果，添加相似度阈值过滤
             similar_docs = []
             for hits in results:
                 for hit in hits:
-                    similar_docs.append({
-                        "document_id": hit.entity.get("document_id"),
-                        "chunk_id": hit.entity.get("chunk_id"), 
-                        "text": hit.entity.get("text"),
-                        "score": float(hit.score)
-                    })
+                    score = float(hit.score)
+                    # 只返回相似度大于等于阈值的结果
+                    if score >= min_score:
+                        similar_docs.append({
+                            "document_id": hit.entity.get("document_id"),
+                            "chunk_id": hit.entity.get("chunk_id"), 
+                            "text": hit.entity.get("text"),
+                            "score": score
+                        })
             
-            logger.info(f"Found {len(similar_docs)} similar documents")
+            logger.info(f"Found {len(similar_docs)} similar documents (filtered by min_score={min_score})")
             return similar_docs
             
         except Exception as e:
             logger.error(f"Failed to search similar documents: {e}")
             return []
+
+    def search_by_keywords(self, query_text: str, top_k: int = 10, document_id: str = None) -> List[Dict[str, Any]]:
+        """基于关键词的文本搜索（补充语义搜索）"""
+        if not self.is_available:
+            logger.info("Keyword search skipped - service not available")
+            return []
+            
+        try:
+            from pymilvus import Collection
+            
+            collection = Collection(self.collection_name)
+            collection.load()
+            
+            # 提取查询关键词
+            keywords = self._extract_query_keywords(query_text)
+            if not keywords:
+                return []
+            
+            # 构建关键词匹配表达式
+            keyword_expressions = []
+            for keyword in keywords:
+                # 使用LIKE操作符进行文本匹配
+                keyword_expressions.append(f'text like "%{keyword}%"')
+            
+            # 组合表达式
+            if len(keyword_expressions) == 1:
+                expr = keyword_expressions[0]
+            else:
+                # 使用OR连接，只要包含任一关键词即可
+                expr = f"({' or '.join(keyword_expressions)})"
+            
+            # 如果指定了文档ID，添加过滤条件
+            if document_id:
+                expr = f'({expr}) and document_id == "{document_id}"'
+            
+            logger.info(f"关键词搜索表达式: {expr}")
+            
+            # 执行查询（使用query而不是search，因为我们要基于文本匹配）
+            results = collection.query(
+                expr=expr,
+                output_fields=["document_id", "chunk_id", "text"],
+                limit=top_k
+            )
+            
+            # 处理结果，计算匹配度
+            keyword_docs = []
+            for result in results:
+                # 计算关键词匹配度
+                text = result.get("text", "")
+                match_score = self._calculate_keyword_match_score(text, keywords)
+                
+                keyword_docs.append({
+                    "document_id": result.get("document_id"),
+                    "chunk_id": result.get("chunk_id"),
+                    "text": text,
+                    "score": match_score,
+                    "matched_keywords": self._find_matched_keywords(text, keywords)
+                })
+            
+            # 按匹配度排序
+            keyword_docs.sort(key=lambda x: x["score"], reverse=True)
+            
+            logger.info(f"关键词搜索找到 {len(keyword_docs)} 个匹配结果")
+            return keyword_docs[:top_k]
+            
+        except Exception as e:
+            logger.error(f"关键词搜索失败: {e}")
+            return []
+    
+    def _extract_query_keywords(self, query_text: str) -> List[str]:
+        """从查询文本中提取关键词"""
+        import re
+        
+        keywords = []
+        
+        # 1. 提取中文词汇（2个或以上连续汉字）
+        chinese_words = re.findall(r'[\u4e00-\u9fff]{2,}', query_text)
+        keywords.extend(chinese_words)
+        
+        # 2. 提取英文单词（2个或以上字符）
+        english_words = re.findall(r'[a-zA-Z]{2,}', query_text)
+        keywords.extend(english_words)
+        
+        # 3. 提取数字模式
+        numbers = re.findall(r'\d{2,}', query_text)
+        keywords.extend(numbers)
+        
+        # 4. 提取专业术语（包含大小写字母和数字的组合）
+        technical_terms = re.findall(r'[a-zA-Z]+\d+|[A-Z]{2,}', query_text)
+        keywords.extend(technical_terms)
+        
+        # 去重并过滤
+        unique_keywords = list(set(keywords))
+        # 过滤掉过短的词汇
+        filtered_keywords = [kw for kw in unique_keywords if len(kw) >= 2]
+        
+        logger.info(f"提取的关键词: {filtered_keywords}")
+        return filtered_keywords
+    
+    def _calculate_keyword_match_score(self, text: str, keywords: List[str]) -> float:
+        """计算关键词匹配度分数"""
+        if not text or not keywords:
+            return 0.0
+        
+        text_lower = text.lower()
+        total_matches = 0
+        unique_matches = 0
+        
+        for keyword in keywords:
+            keyword_lower = keyword.lower()
+            matches = text_lower.count(keyword_lower)
+            if matches > 0:
+                total_matches += matches
+                unique_matches += 1
+        
+        # 计算分数：考虑匹配的关键词数量和总匹配次数
+        keyword_coverage = unique_matches / len(keywords)  # 关键词覆盖率
+        match_density = min(total_matches / len(text.split()), 1.0)  # 匹配密度
+        
+        # 综合分数
+        score = keyword_coverage * 0.7 + match_density * 0.3
+        return min(score, 1.0)
+    
+    def _find_matched_keywords(self, text: str, keywords: List[str]) -> List[str]:
+        """找到文本中匹配的关键词"""
+        text_lower = text.lower()
+        matched = []
+        
+        for keyword in keywords:
+            if keyword.lower() in text_lower:
+                matched.append(keyword)
+        
+        return matched
 
     def delete_vectors(self, document_id: str) -> bool:
         """删除指定文档的向量"""
@@ -423,6 +559,156 @@ class BaseVectorizer(ABC):
         """
         pass
     
+    def chunk_text_smart(self, text: str, chunk_size: int = 800, overlap: int = 150) -> List[str]:
+        """智能分段，保持语义完整性"""
+        if len(text) <= chunk_size:
+            return [text]
+        
+        chunks = []
+        sentences = self._split_sentences(text)
+        current_chunk = ""
+        
+        for sentence in sentences:
+            # 如果添加这个句子不会超过限制
+            if len(current_chunk + sentence) <= chunk_size:
+                current_chunk += sentence
+            else:
+                # 保存当前chunk
+                if current_chunk:
+                    chunks.append(current_chunk.strip())
+                
+                # 开始新chunk，包含overlap
+                if chunks and overlap > 0:
+                    overlap_text = current_chunk[-overlap:]
+                    current_chunk = overlap_text + sentence
+                else:
+                    current_chunk = sentence
+        
+        # 添加最后一个chunk
+        if current_chunk:
+            chunks.append(current_chunk.strip())
+        
+        return chunks
+
+    def _split_sentences(self, text: str) -> List[str]:
+        """按句子分割文本"""
+        import re
+        # 中文句号、英文句号、问号、感叹号
+        sentences = re.split(r'[。！？.!?]\s*', text)
+        # 为分割后的句子添加句号，保持语义完整
+        result = []
+        for sentence in sentences:
+            if sentence.strip():
+                # 检查原句子是否以标点结尾
+                if sentence.strip() and not re.search(r'[。！？.!?]$', sentence.strip()):
+                    result.append(sentence.strip() + '。')
+                else:
+                    result.append(sentence.strip())
+        return result
+    
+    def vectorize_document_enhanced(self, file_path: str, document_id: str, chunk_size: int = 800, overlap: int = 150) -> Dict[str, Any]:
+        """增强版文档向量化，包含关键词索引"""
+        try:
+            # 1. 提取文本内容
+            extract_result = self.extract_text(file_path)
+            if not extract_result['success']:
+                return extract_result
+            
+            text = extract_result['text']
+            
+            # 2. 提取关键词
+            keywords = self._extract_keywords_from_content(text, os.path.basename(file_path))
+            
+            # 3. 智能分段
+            chunks = self.chunk_text_smart(text, chunk_size, overlap)
+            
+            # 4. 为每个chunk添加关键词增强
+            enhanced_chunks = []
+            for i, chunk in enumerate(chunks):
+                # 找到与此chunk相关的关键词
+                chunk_keywords = [kw for kw in keywords if kw.lower() in chunk.lower()]
+                
+                # 创建增强文本（原文本 + 关键词）
+                enhanced_text = chunk
+                if chunk_keywords:
+                    enhanced_text += f"\n关键词: {', '.join(chunk_keywords)}"
+                
+                enhanced_chunks.append({
+                    'text': chunk,
+                    'enhanced_text': enhanced_text,
+                    'keywords': chunk_keywords,
+                    'chunk_index': i
+                })
+            
+            # 5. 向量化增强文本
+            vectors_data = []
+            for chunk_data in enhanced_chunks:
+                chunk_id = f"chunk_{chunk_data['chunk_index']}_{str(uuid.uuid4())[:8]}"
+                vector = self.encode_text(chunk_data['enhanced_text'])
+                
+                if vector:
+                    vectors_data.append({
+                        'document_id': str(document_id),
+                        'chunk_id': chunk_id,
+                        'text': chunk_data['text'],  # 存储原始文本
+                        'vector': vector
+                    })
+            
+            # 6. 插入向量数据库
+            insert_success = self.insert_vectors(vectors_data)
+            
+            return {
+                'success': True,
+                'text': text,
+                'metadata': extract_result['metadata'],
+                'chunks': [{'id': f'chunk_{i}', 'content': chunk['text']} for i, chunk in enumerate(enhanced_chunks)],
+                'vectors_count': len(vectors_data),
+                'vector_insert_success': insert_success,
+                'keywords': keywords,
+                'chunk_size': chunk_size,
+                'overlap': overlap,
+                'enhancement': 'enabled'
+            }
+            
+        except Exception as e:
+            logger.error(f"增强向量化失败: {str(e)}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    def _extract_keywords_from_content(self, text: str, filename: str) -> List[str]:
+        """从内容中提取关键词用于检索优化"""
+        keywords = []
+        
+        # 文件名关键词
+        base_name = os.path.splitext(filename)[0]
+        filename_words = base_name.replace('_', ' ').replace('-', ' ').split()
+        keywords.extend([word for word in filename_words if len(word) > 1])
+        
+        # 文本内容关键词
+        if text:
+            import re
+            # 提取中文词汇（2个或以上连续汉字）
+            chinese_words = re.findall(r'[\u4e00-\u9fff]{2,}', text)
+            keywords.extend(chinese_words[:50])  # 限制数量
+            
+            # 提取英文单词（2个或以上字符）
+            english_words = re.findall(r'[a-zA-Z]{2,}', text)
+            keywords.extend(english_words[:50])  # 限制数量
+            
+            # 提取数字模式
+            numbers = re.findall(r'\d{2,}', text)
+            keywords.extend(numbers[:20])  # 限制数量
+            
+            # 提取可能的专业术语
+            technical_terms = re.findall(r'[A-Z]{2,}|[a-zA-Z]+\d+', text)
+            keywords.extend(technical_terms[:30])
+        
+        # 去重并过滤
+        unique_keywords = list(set(keywords))
+        return [kw for kw in unique_keywords if len(kw) > 1 and not kw.isspace()][:100]  # 限制总数
+
     def vectorize_document(self, file_path: str, document_id: str, chunk_size: int = 1000, overlap: int = 200) -> Dict[str, Any]:
         """
         完整的文档向量化流程

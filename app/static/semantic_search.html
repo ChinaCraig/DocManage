@@ -493,12 +493,12 @@
 
         /* 下部分：聊天检索区域 */
         .chat-section {
-            flex: 0 0 300px;
-            background: #fff;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            height: 35vh;
+            min-height: 300px;
             display: flex;
             flex-direction: column;
+            border-top: 1px solid #e0e0e0;
+            background: #fff;
         }
 
         /* 预览区域样式 */
@@ -596,16 +596,40 @@
         .preview-content {
             flex: 1;
             padding: 20px;
-            overflow: hidden;
+            overflow-y: auto;
+            overflow-x: hidden;
             min-height: 200px;
             display: flex;
             flex-direction: column;
+            /* 自定义滚动条样式 */
+            scrollbar-width: thin;
+            scrollbar-color: #cbd5e0 #f7fafc;
+        }
+
+        /* Webkit浏览器滚动条样式 */
+        .preview-content::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .preview-content::-webkit-scrollbar-track {
+            background: #f1f5f9;
+            border-radius: 4px;
+        }
+
+        .preview-content::-webkit-scrollbar-thumb {
+            background: #cbd5e0;
+            border-radius: 4px;
+            transition: background-color 0.2s ease;
+        }
+
+        .preview-content::-webkit-scrollbar-thumb:hover {
+            background: #a0aec0;
         }
 
         /* 预览内容区域 */
         .preview-main-content {
             flex: 1;
-            overflow: auto;
+            overflow: visible;
             margin-bottom: 15px;
         }
 
@@ -648,20 +672,34 @@
 
         /* 聊天区域样式 */
         .chat-header {
-            padding: 12px 20px;
-            background: linear-gradient(135deg, #e8f4fd 0%, #d1ecf1 100%);
-            border-bottom: 1px solid #bee5eb;
-            border-radius: 8px 8px 0 0;
+            padding: 15px;
+            border-bottom: 1px solid #e9ecef;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
         }
 
         .chat-title {
             margin: 0;
-            color: #0c5460;
             font-size: 14px;
             font-weight: 600;
+            color: #495057;
+        }
+
+        /* 相似度设置样式 */
+        .similarity-settings {
             display: flex;
             align-items: center;
             gap: 8px;
+        }
+
+        .similarity-settings select {
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            padding: 2px 8px;
+        }
+
+        .similarity-settings select:focus {
+            border-color: #17a2b8;
+            box-shadow: 0 0 0 0.2rem rgba(23, 162, 184, 0.25);
         }
 
         .chat-messages {
@@ -999,6 +1037,98 @@
             margin-bottom: 5px;
         }
 
+        /* 文本内容预览滚动样式 */
+        .text-content-preview {
+            max-height: 400px;
+            overflow-y: auto;
+            border-radius: 6px;
+        }
+
+        .text-content-preview::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .text-content-preview::-webkit-scrollbar-track {
+            background: #f8f9fa;
+        }
+
+        .text-content-preview::-webkit-scrollbar-thumb {
+            background: #dee2e6;
+            border-radius: 3px;
+        }
+
+        .text-content-preview::-webkit-scrollbar-thumb:hover {
+            background: #adb5bd;
+        }
+
+        /* Excel数据内容区域滚动样式 */
+        .excel-data-content {
+            max-height: 300px;
+            overflow: auto;
+            border-radius: 6px;
+        }
+
+        .excel-data-content::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        .excel-data-content::-webkit-scrollbar-track {
+            background: #f8f9fa;
+        }
+
+        .excel-data-content::-webkit-scrollbar-thumb {
+            background: #dee2e6;
+            border-radius: 3px;
+        }
+
+        .excel-data-content::-webkit-scrollbar-thumb:hover {
+            background: #adb5bd;
+        }
+
+        /* Office文档内容区域样式优化 */
+        .office-content {
+            max-height: none;
+            overflow: visible;
+        }
+
+        /* 向量化内容区域滚动 */
+        .vector-chunks-container {
+            max-height: 350px;
+            overflow-y: auto;
+            padding-right: 5px;
+        }
+
+        .vector-chunks-container::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .vector-chunks-container::-webkit-scrollbar-track {
+            background: #f8f9fa;
+        }
+
+        .vector-chunks-container::-webkit-scrollbar-thumb {
+            background: #dee2e6;
+            border-radius: 3px;
+        }
+
+        .vector-chunks-container::-webkit-scrollbar-thumb:hover {
+            background: #adb5bd;
+        }
+
+        /* PDF和媒体容器样式 */
+        .pdf-container iframe {
+            border: 1px solid #e9ecef;
+        }
+
+        .image-container,
+        .video-container {
+            max-height: 400px;
+            overflow: auto;
+            text-align: center;
+            border-radius: 8px;
+        }
+
         /* 响应式设计 */
         @media (max-width: 768px) {
             .navbar-stats {
@@ -1211,6 +1341,77 @@
         .document-detail-compact .info-value {
             color: #333;
         }
+
+        .search-strategy-hint {
+            padding: 8px 12px;
+            background: rgba(13, 110, 253, 0.1);
+            border-left: 3px solid #0d6efd;
+            border-radius: 4px;
+        }
+
+        .search-tips {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .tip-card {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            border: 1px solid #e9ecef;
+        }
+
+        .tip-card h6 {
+            margin-bottom: 10px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .tip-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            font-size: 12px;
+        }
+
+        .tip-list li {
+            padding: 4px 0;
+            color: #6c757d;
+        }
+
+        .tip-list li strong {
+            color: #495057;
+        }
+
+        /* 聊天区域 */
+        .chat-section {
+            height: 35vh;
+            min-height: 300px;
+            display: flex;
+            flex-direction: column;
+            border-top: 1px solid #e0e0e0;
+            background: #fff;
+        }
+
+        .chat-header {
+            padding: 15px;
+            border-bottom: 1px solid #e9ecef;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        }
+
+        .chat-title {
+            margin: 0;
+            font-size: 14px;
+            font-weight: 600;
+            color: #495057;
+        }
+
+        .similarity-settings select {
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            padding: 2px 8px;
+        }
     </style>
 </head>
 <body>
@@ -1392,17 +1593,63 @@
                         <!-- 下部分：聊天检索区域 -->
                         <div class="chat-section" id="chatSection">
                             <div class="chat-header">
-                                <h6 class="chat-title">
-                                    <i class="bi bi-chat-dots"></i>
-                                    智能检索对话
-                                </h6>
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <h6 class="chat-title">
+                                        <i class="bi bi-chat-dots"></i>
+                                        智能检索对话
+                                    </h6>
+                                    <div class="similarity-settings">
+                                        <small class="text-muted me-2">相关性要求：</small>
+                                        <select id="similarityLevel" class="form-select form-select-sm" style="width: auto; font-size: 12px;">
+                                            <option value="high">高相关性</option>
+                                            <option value="medium" selected>中等相关性</option>
+                                            <option value="low">低相关性</option>
+                                            <option value="any">显示所有</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <!-- 搜索策略提示 -->
+                                <div class="search-strategy-hint mt-2" id="searchStrategyHint" style="display: none;">
+                                    <small class="text-info">
+                                        <i class="bi bi-lightbulb"></i>
+                                        <span id="strategyText">智能搜索模式</span>
+                                    </small>
+                                </div>
                             </div>
                             <div class="chat-messages" id="chatMessages">
                                 <div class="empty-state">
                                     <i class="bi bi-robot"></i>
                                     <h4>智能检索助手</h4>
-                                    <p>请输入您想要查找的内容，我将为您智能检索相关文档</p>
-                                    <small class="text-muted">支持自然语言查询，如"关于合同的文档"</small>
+                                    <p>支持多种搜索策略，为您找到最相关的文档内容</p>
+                                    
+                                    <div class="search-tips mt-3">
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <div class="tip-card">
+                                                    <h6><i class="bi bi-lightbulb text-warning"></i> 智能搜索提示</h6>
+                                                    <ul class="tip-list">
+                                                        <li><strong>专业术语</strong>：如"MCP"、"API"等将触发混合搜索</li>
+                                                        <li><strong>自然语言</strong>：如"关于合同的文档"使用语义搜索</li>
+                                                        <li><strong>相关性调整</strong>：根据需要选择合适的相关性等级</li>
+                                                    </ul>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <div class="tip-card">
+                                                    <h6><i class="bi bi-gear text-primary"></i> 搜索策略</h6>
+                                                    <ul class="tip-list">
+                                                        <li><strong>🎯 语义搜索</strong>：理解查询意图和上下文</li>
+                                                        <li><strong>🔤 关键词匹配</strong>：精确匹配特定术语</li>
+                                                        <li><strong>🧠 智能混合</strong>：自动选择最佳搜索方式</li>
+                                                    </ul>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <small class="text-muted mt-3 d-block">
+                                        💡 系统会根据您的查询内容自动选择最合适的搜索策略
+                                    </small>
                                 </div>
                             </div>
                             <div class="chat-input-area">

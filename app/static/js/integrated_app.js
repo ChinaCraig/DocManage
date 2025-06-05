@@ -716,6 +716,32 @@ async function performSemanticSearch() {
     console.log('Semantic search moved to chat interface');
 }
 
+function formatSearchResults(results, query, similarityLevel, minScore) {
+    const similarityLabels = {
+        'high': '高相关性 (≥60%)',
+        'medium': '中等相关性 (≥30%)', 
+        'low': '低相关性 (≥10%)',
+        'any': '显示所有结果'
+    };
+    
+    const levelText = similarityLabels[similarityLevel] || '中等相关性';
+    
+    let message = `找到了 ${results.length} 个相关结果 (${levelText})：\n\n`;
+    
+    results.forEach((result, index) => {
+        const score = (result.score * 100).toFixed(1);
+        message += `${index + 1}. **${result.document.name}** (相关度: ${score}%)\n`;
+        message += `${result.text.substring(0, 100)}...\n\n`;
+    });
+    
+    message += `✨ 提示：点击文档名称可以查看完整内容预览。`;
+    if (similarityLevel !== 'any') {
+        message += `<br>💡 如需更多结果，可降低相关性要求后重新搜索。`;
+    }
+    
+    return message.replace(/\n/g, '<br>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+}
+
 function displaySearchResults(data, query) {
     const resultsDiv = document.getElementById('searchResults');
     
@@ -1962,41 +1988,41 @@ function generateDocumentInfo(node) {
     const isVectorized = node.is_vectorized ? '是' : '否';
     
     return `
-        <div class="document-info-compact">
-            <div class="info-header">
-                <i class="bi bi-info-circle"></i>
-                <span>文档信息</span>
-            </div>
-            <div class="info-grid">
-                <div class="info-item">
-                    <span class="label">文件名:</span>
-                    <span class="value">${node.name}</span>
+        <div class="document-info-horizontal" style="background-color: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; padding: 12px; margin-top: 10px;">
+            <div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: center; font-size: 13px;">
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <i class="bi bi-file-earmark text-primary" style="font-size: 14px;"></i>
+                    <span style="font-weight: 500; color: #495057;">${node.name}</span>
                 </div>
-                <div class="info-item">
-                    <span class="label">类型:</span>
-                    <span class="value">${fileType}</span>
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <i class="bi bi-tag text-secondary" style="font-size: 12px;"></i>
+                    <span style="color: #6c757d;">${fileType}</span>
                 </div>
-                <div class="info-item">
-                    <span class="label">大小:</span>
-                    <span class="value">${fileSize}</span>
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <i class="bi bi-archive text-secondary" style="font-size: 12px;"></i>
+                    <span style="color: #6c757d;">${fileSize}</span>
                 </div>
-                <div class="info-item">
-                    <span class="label">向量化:</span>
-                    <span class="value ${isVectorized === '是' ? 'text-success' : 'text-muted'}">${isVectorized}</span>
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <i class="bi bi-vector-pen ${isVectorized === '是' ? 'text-success' : 'text-muted'}" style="font-size: 12px;"></i>
+                    <span style="color: ${isVectorized === '是' ? '#28a745' : '#6c757d'};">向量化: ${isVectorized}</span>
                 </div>
-                <div class="info-item">
-                    <span class="label">创建:</span>
-                    <span class="value">${createdDate}</span>
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <i class="bi bi-calendar-plus text-secondary" style="font-size: 12px;"></i>
+                    <span style="color: #6c757d;">${createdDate}</span>
                 </div>
-                <div class="info-item">
-                    <span class="label">修改:</span>
-                    <span class="value">${updatedDate}</span>
-                </div>
-                <div class="info-item info-description">
-                    <span class="label">描述:</span>
-                    <span class="value text-muted">${description}</span>
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <i class="bi bi-calendar-check text-secondary" style="font-size: 12px;"></i>
+                    <span style="color: #6c757d;">${updatedDate}</span>
                 </div>
             </div>
+            ${description !== '无描述' ? `
+                <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #e9ecef;">
+                    <div style="display: flex; align-items: flex-start; gap: 6px; font-size: 12px;">
+                        <i class="bi bi-chat-square-text text-secondary" style="font-size: 12px; margin-top: 2px;"></i>
+                        <span style="color: #6c757d; line-height: 1.4;">${description}</span>
+                    </div>
+                </div>
+            ` : ''}
         </div>
     `;
 }
@@ -2009,18 +2035,16 @@ function displayPreviewContent(data, fileType, node) {
         const content = data.content || data.text || '';
         if (content) {
             previewContent.innerHTML = `
-                <div class="preview-main-content">
-                    <div class="office-content">
-                        <div class="text-preview-info mb-3">
-                            <p class="mb-1"><strong>文档内容:</strong></p>
-                            <p class="mb-0 text-muted">Word文档文本预览</p>
-                        </div>
-                        <div class="text-content-preview">
-                            <div class="card">
-                                <div class="card-body">
-                                    <div class="text-content" style="white-space: pre-wrap; line-height: 1.6; font-size: 14px;">
-                                        ${content.replace(/\n/g, '<br>')}
-                                    </div>
+                <div class="office-content" style="flex: 1; margin-bottom: 15px;">
+                    <div class="text-preview-info mb-3">
+                        <p class="mb-1"><strong>文档内容:</strong></p>
+                        <p class="mb-0 text-muted">Word文档文本预览</p>
+                    </div>
+                    <div class="text-content-preview">
+                        <div class="card">
+                            <div class="card-body">
+                                <div class="text-content" style="white-space: pre-wrap; line-height: 1.6; font-size: 14px;">
+                                    ${content.replace(/\n/g, '<br>')}
                                 </div>
                             </div>
                         </div>
@@ -2032,16 +2056,14 @@ function displayPreviewContent(data, fileType, node) {
             `;
         } else {
             previewContent.innerHTML = `
-                <div class="preview-main-content">
-                    <div class="office-content">
-                        <div class="text-preview-info mb-3">
-                            <p class="mb-0 text-muted">Word文档预览</p>
-                        </div>
-                        <div class="empty-state">
-                            <i class="bi bi-file-earmark-word"></i>
-                            <h5>Word文档</h5>
-                            <p>无法提取文档内容或文档为空</p>
-                        </div>
+                <div class="office-content" style="flex: 1; margin-bottom: 15px;">
+                    <div class="text-preview-info mb-3">
+                        <p class="mb-0 text-muted">Word文档预览</p>
+                    </div>
+                    <div class="empty-state">
+                        <i class="bi bi-file-earmark-word"></i>
+                        <h5>Word文档</h5>
+                        <p>无法提取文档内容或文档为空</p>
                     </div>
                 </div>
                 <div class="document-info-section">
@@ -2068,14 +2090,12 @@ function displayPreviewContent(data, fileType, node) {
             });
             
             previewContent.innerHTML = `
-                <div class="preview-main-content">
-                    <div class="office-content">
-                        <div class="text-preview-info mb-3">
-                            <p class="mb-1"><strong>工作表数量:</strong> ${data.sheets.length}</p>
-                            <p class="mb-0 text-muted">Excel数据预览</p>
-                        </div>
-                        ${sheetsHtml}
+                <div class="office-content" style="flex: 1; margin-bottom: 15px;">
+                    <div class="text-preview-info mb-3">
+                        <p class="mb-1"><strong>工作表数量:</strong> ${data.sheets.length}</p>
+                        <p class="mb-0 text-muted">Excel数据预览</p>
                     </div>
+                    ${sheetsHtml}
                 </div>
                 <div class="document-info-section">
                     ${generateDocumentInfo(node)}
@@ -2083,16 +2103,14 @@ function displayPreviewContent(data, fileType, node) {
             `;
         } else {
             previewContent.innerHTML = `
-                <div class="preview-main-content">
-                    <div class="office-content">
-                        <div class="text-preview-info mb-3">
-                            <p class="mb-0 text-muted">Excel文档预览</p>
-                        </div>
-                        <div class="empty-state">
-                            <i class="bi bi-table"></i>
-                            <h5>Excel文档</h5>
-                            <p>无法读取工作表数据</p>
-                        </div>
+                <div class="office-content" style="flex: 1; margin-bottom: 15px;">
+                    <div class="text-preview-info mb-3">
+                        <p class="mb-0 text-muted">Excel文档预览</p>
+                    </div>
+                    <div class="empty-state">
+                        <i class="bi bi-table"></i>
+                        <h5>Excel文档</h5>
+                        <p>无法读取工作表数据</p>
                     </div>
                 </div>
                 <div class="document-info-section">
@@ -2123,40 +2141,68 @@ function initChatInput() {
 
 async function sendChatMessage() {
     const chatInput = document.getElementById('chatInput');
+    const similarityLevel = document.getElementById('similarityLevel');
     const message = chatInput.value.trim();
     
     if (!message) {
         return;
     }
     
+    // 获取用户选择的相似度等级
+    const selectedSimilarity = similarityLevel ? similarityLevel.value : 'medium';
+    
     // 添加用户消息到聊天记录
     addChatMessage('user', message);
     chatInput.value = '';
+    
+    // 智能选择搜索策略并显示提示
+    const searchStrategy = determineSearchStrategy(message, selectedSimilarity);
+    showSearchStrategyHint(searchStrategy, message);
     
     // 显示AI正在思考的状态
     const thinkingId = addChatMessage('assistant', '', true);
     
     try {
-        // 调用语义搜索API
-        const response = await fetch('/api/search/', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                query: message,
-                top_k: 5
-            })
-        });
+        let response;
+        if (searchStrategy === 'hybrid') {
+            // 使用混合搜索
+            response = await fetch('/api/search/hybrid', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    query: message,
+                    top_k: 5,
+                    similarity_level: selectedSimilarity
+                })
+            });
+        } else {
+            // 使用纯语义搜索
+            response = await fetch('/api/search/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    query: message,
+                    top_k: 5,
+                    similarity_level: selectedSimilarity
+                })
+            });
+        }
         
         const result = await response.json();
         
         // 移除thinking消息
         removeChatMessage(thinkingId);
         
+        // 隐藏搜索策略提示
+        hideSearchStrategyHint();
+        
         if (result.success && result.data.results && result.data.results.length > 0) {
             // 显示搜索结果
-            const resultMessage = formatSearchResults(result.data.results, message);
+            const resultMessage = formatSearchResultsEnhanced(result.data, message);
             addChatMessage('assistant', resultMessage);
             
             // 如果有搜索结果，自动预览第一个文档
@@ -2166,13 +2212,125 @@ async function sendChatMessage() {
                 previewDocument(firstResult.document);
             }
         } else {
-            addChatMessage('assistant', '抱歉，没有找到相关的文档内容。请尝试使用其他关键词。');
+            // 智能提示用户如何优化搜索
+            const suggestionMessage = generateSearchSuggestions(message, selectedSimilarity, searchStrategy);
+            addChatMessage('assistant', suggestionMessage);
         }
     } catch (error) {
         removeChatMessage(thinkingId);
+        hideSearchStrategyHint();
         addChatMessage('assistant', '搜索时出现错误，请稍后再试。');
         console.error('Chat search error:', error);
     }
+}
+
+function determineSearchStrategy(query, similarityLevel) {
+    // 智能确定搜索策略
+    
+    // 如果查询包含专业术语、缩写、数字等，优先使用混合搜索
+    const hasSpecialTerms = /[A-Z]{2,}|[a-zA-Z]+\d+|\d{2,}|[a-zA-Z]{2,4}/.test(query);
+    
+    // 如果查询很短（少于4个字符）或包含特殊术语，使用混合搜索
+    if (query.length <= 4 || hasSpecialTerms) {
+        return 'hybrid';
+    }
+    
+    // 如果相似度要求是高相关性，但查询较短，也使用混合搜索
+    if (similarityLevel === 'high' && query.length <= 6) {
+        return 'hybrid';
+    }
+    
+    // 其他情况使用语义搜索
+    return 'semantic';
+}
+
+function formatSearchResultsEnhanced(data, query) {
+    // 增强版搜索结果格式化
+    
+    const similarityLabels = {
+        'high': '高相关性 (≥60%)',
+        'medium': '中等相关性 (≥30%)', 
+        'low': '低相关性 (≥10%)',
+        'any': '显示所有结果'
+    };
+    
+    const levelText = similarityLabels[data.similarity_level] || '中等相关性';
+    const searchType = data.search_type || 'semantic';
+    
+    let searchTypeText = '';
+    if (searchType === 'hybrid') {
+        searchTypeText = ` (智能混合搜索: ${data.semantic_count || 0}个语义 + ${data.keyword_count || 0}个关键词)`;
+    }
+    
+    let message = `🔍 找到了 ${data.results.length} 个相关结果 (${levelText})${searchTypeText}：\n\n`;
+    
+    data.results.forEach((result, index) => {
+        const score = (result.score * 100).toFixed(1);
+        const searchIcon = result.search_type === 'keyword' ? '🔤' : 
+                          result.search_type === 'hybrid' ? '🧠' : '🎯';
+        
+        message += `${index + 1}. ${searchIcon} **${result.document.name}** (${score}%)\n`;
+        
+        // 高亮匹配的关键词
+        let displayText = result.text.substring(0, 120);
+        if (result.matched_keywords && result.matched_keywords.length > 0) {
+            result.matched_keywords.forEach(keyword => {
+                const regex = new RegExp(`(${keyword})`, 'gi');
+                displayText = displayText.replace(regex, '**$1**');
+            });
+        }
+        message += `${displayText}...\n\n`;
+    });
+    
+    message += `✨ 提示：点击文档名称可以查看完整内容预览。`;
+    if (data.similarity_level !== 'any') {
+        message += `<br>💡 如需更多结果，可降低相关性要求后重新搜索。`;
+    }
+    
+    return message.replace(/\n/g, '<br>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+}
+
+function generateSearchSuggestions(query, similarityLevel, searchStrategy) {
+    // 生成搜索建议
+    
+    const similarityLabels = {
+        'high': '高相关性',
+        'medium': '中等相关性', 
+        'low': '低相关性',
+        'any': '所有结果'
+    };
+    
+    const levelText = similarityLabels[similarityLevel] || '中等相关性';
+    const strategyText = searchStrategy === 'hybrid' ? '智能混合搜索' : '语义搜索';
+    
+    let suggestions = `🤔 在${levelText}(${strategyText})要求下，没有找到相关的文档内容。\n\n`;
+    
+    suggestions += `**优化建议：**\n`;
+    
+    if (similarityLevel === 'high') {
+        suggestions += `1. 🎯 降低相关性要求（选择"中等"或"低相关性"）\n`;
+    }
+    
+    if (query.length <= 4) {
+        suggestions += `2. 📝 尝试使用更完整的词汇或短语\n`;
+        suggestions += `3. 🔤 添加相关的上下文词汇\n`;
+    }
+    
+    if (searchStrategy === 'semantic') {
+        suggestions += `4. 🧠 系统已自动尝试智能搜索，如仍无结果可能文档未向量化\n`;
+    }
+    
+    suggestions += `5. 📚 检查是否有相关文档已上传并向量化\n`;
+    suggestions += `6. 🔄 尝试使用同义词或相关术语重新搜索\n`;
+    
+    // 根据查询内容给出具体建议
+    if (/[A-Z]{2,}/.test(query)) {
+        suggestions += `\n💡 **专业术语提示：** 检测到您搜索的是专业缩写，建议：\n`;
+        suggestions += `- 尝试搜索完整术语名称\n`;
+        suggestions += `- 添加相关描述词汇\n`;
+    }
+    
+    return suggestions.replace(/\n/g, '<br>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
 }
 
 function addChatMessage(sender, content, isThinking = false) {
@@ -2537,5 +2695,34 @@ async function confirmVectorization() {
         const confirmBtn = document.getElementById('confirmVectorization');
         confirmBtn.disabled = false;
         confirmBtn.innerHTML = '<i class="bi bi-check-circle"></i> 确定';
+    }
+}
+
+function showSearchStrategyHint(strategy, query) {
+    const hintElement = document.getElementById('searchStrategyHint');
+    const strategyText = document.getElementById('strategyText');
+    
+    if (!hintElement || !strategyText) return;
+    
+    let hintText = '';
+    if (strategy === 'hybrid') {
+        hintText = '🧠 智能混合搜索：结合语义理解和关键词匹配';
+        if (/[A-Z]{2,}/.test(query)) {
+            hintText += '（检测到专业术语）';
+        }
+    } else {
+        hintText = '🎯 语义搜索：基于文本语义理解';
+    }
+    
+    strategyText.textContent = hintText;
+    hintElement.style.display = 'block';
+}
+
+function hideSearchStrategyHint() {
+    const hintElement = document.getElementById('searchStrategyHint');
+    if (hintElement) {
+        setTimeout(() => {
+            hintElement.style.display = 'none';
+        }, 2000); // 2秒后自动隐藏
     }
 }
