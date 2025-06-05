@@ -1,3 +1,12 @@
+# 兼容性修复：为新版本Pillow添加ANTIALIAS别名
+# 必须在其他导入之前执行，以确保所有依赖库都能使用
+try:
+    from PIL import Image
+    if not hasattr(Image, 'ANTIALIAS'):
+        Image.ANTIALIAS = Image.LANCZOS
+except Exception:
+    pass
+
 import os
 from flask import Flask, send_from_directory
 from flask_sqlalchemy import SQLAlchemy

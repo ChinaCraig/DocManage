@@ -1654,8 +1654,11 @@ async function executeVectorization() {
             showSuccess(`向量化完成！已处理 ${result.data.vectorized_chunks || chunks.length} 个文本块`);
             bootstrap.Modal.getInstance(modal).hide();
             
+            // 更新当前预览文档的向量化状态
+            updateVectorizationStatus(documentId, true, result.data.vectorized_at);
+            
             if (selectedNode) {
-                showDocumentDetail(selectedNode);
+                await showDocumentDetail(selectedNode);
             }
             loadStats();
         } else {
@@ -2286,6 +2289,7 @@ function generateDocumentInfo(node) {
     const fileType = node.file_type || '未知';
     const description = node.description || '无描述';
     const isVectorized = node.is_vectorized ? '是' : '否';
+    const vectorizedDate = node.vectorized_at ? formatDateTime(node.vectorized_at) : '';
     
     return `
         <div class="document-info-horizontal" style="background-color: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; padding: 12px; margin-top: 10px;">
@@ -2304,24 +2308,20 @@ function generateDocumentInfo(node) {
                 </div>
                 <div style="display: flex; align-items: center; gap: 6px;">
                     <i class="bi bi-vector-pen ${isVectorized === '是' ? 'text-success' : 'text-muted'}" style="font-size: 12px;"></i>
-                    <span style="color: ${isVectorized === '是' ? '#28a745' : '#6c757d'};">向量化: ${isVectorized}</span>
+                    <span style="color: ${isVectorized === '是' ? '#28a745' : '#6c757d'};" title="${vectorizedDate ? '向量化时间: ' + vectorizedDate : ''}">向量化: ${isVectorized}</span>
                 </div>
                 <div style="display: flex; align-items: center; gap: 6px;">
-                    <i class="bi bi-calendar-plus text-secondary" style="font-size: 12px;"></i>
+                    <i class="bi bi-calendar text-secondary" style="font-size: 12px;"></i>
                     <span style="color: #6c757d;">${createdDate}</span>
-                </div>
-                <div style="display: flex; align-items: center; gap: 6px;">
-                    <i class="bi bi-calendar-check text-secondary" style="font-size: 12px;"></i>
-                    <span style="color: #6c757d;">${updatedDate}</span>
                 </div>
             </div>
             ${description !== '无描述' ? `
-                <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #e9ecef;">
-                    <div style="display: flex; align-items: flex-start; gap: 6px; font-size: 12px;">
-                        <i class="bi bi-chat-square-text text-secondary" style="font-size: 12px; margin-top: 2px;"></i>
-                        <span style="color: #6c757d; line-height: 1.4;">${description}</span>
-                    </div>
+            <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #e9ecef;">
+                <div style="display: flex; align-items: flex-start; gap: 6px;">
+                    <i class="bi bi-chat-square-text text-secondary" style="font-size: 12px; margin-top: 2px;"></i>
+                    <span style="color: #6c757d; font-size: 12px; line-height: 1.4;">${description}</span>
                 </div>
+            </div>
             ` : ''}
         </div>
     `;
@@ -2517,6 +2517,7 @@ async function sendChatMessage() {
             addChatMessage('assistant', suggestionMessage);
         }
     } catch (error) {
+        // 确保在任何错误情况下都移除thinking消息
         removeChatMessage(thinkingId);
         hideSearchStrategyHint();
         addChatMessage('assistant', '搜索时出现错误，请稍后再试。');
@@ -2982,9 +2983,12 @@ async function confirmVectorization() {
             showSuccess(`向量化完成！已处理 ${result.data.vectorized_chunks || chunks.length} 个文本块`);
             closeVectorization();
             
+            // 更新当前预览文档的向量化状态
+            updateVectorizationStatus(docId, true, result.data.vectorized_at);
+            
             // 刷新文档详情
             if (selectedNode) {
-                showDocumentDetail(selectedNode);
+                await showDocumentDetail(selectedNode);
             }
             loadStats();
         } else {
@@ -2994,8 +2998,10 @@ async function confirmVectorization() {
         showError('向量化失败: ' + error.message);
     } finally {
         const confirmBtn = document.getElementById('confirmVectorization');
-        confirmBtn.disabled = false;
-        confirmBtn.innerHTML = '<i class="bi bi-check-circle"></i> 确定';
+        if (confirmBtn) {
+            confirmBtn.disabled = false;
+            confirmBtn.innerHTML = '<i class="bi bi-check"></i> 确认向量化';
+        }
     }
 }
 
@@ -3322,3 +3328,36 @@ function renderNodeTags(tags) {
 document.addEventListener('DOMContentLoaded', function() {
     initTagSystem();
 });
+
+// 添加一个函数来实时更新向量化状态显示
+function updateVectorizationStatus(docId, isVectorized, vectorizedAt) {
+    // 更新全局文档对象
+    if (currentPreviewDocument && currentPreviewDocument.id == docId) {
+        currentPreviewDocument.is_vectorized = isVectorized;
+        currentPreviewDocument.vectorized_at = vectorizedAt;
+        
+        // 重新生成文档信息显示
+        const infoElements = document.querySelectorAll('.document-info-horizontal');
+        infoElements.forEach(element => {
+            if (element.querySelector('.bi-file-earmark')) {
+                element.outerHTML = generateDocumentInfo(currentPreviewDocument);
+            }
+        });
+        
+        // 更新向量化按钮
+        const vectorizeBtn = document.getElementById('vectorizeBtn');
+        if (vectorizeBtn) {
+            if (isVectorized) {
+                vectorizeBtn.innerHTML = `
+                    <i class="bi bi-vector-pen"></i>
+                    查看向量化
+                `;
+            } else {
+                vectorizeBtn.innerHTML = `
+                    <i class="bi bi-vector-pen"></i>
+                    向量化
+                `;
+            }
+        }
+    }
+}

@@ -11,6 +11,14 @@ from typing import Dict, List, Any, Optional, Tuple
 from PIL import Image
 import io
 
+# 兼容性修复：为新版本Pillow添加ANTIALIAS别名
+try:
+    from PIL import Image
+    if not hasattr(Image, 'ANTIALIAS'):
+        Image.ANTIALIAS = Image.LANCZOS
+except Exception:
+    pass
+
 logger = logging.getLogger(__name__)
 
 class ImageRecognitionService:

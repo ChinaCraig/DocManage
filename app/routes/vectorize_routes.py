@@ -323,7 +323,7 @@ def execute_vectorization(doc_id):
         
         # 4. 更新文档状态
         if vector_insert_success:
-            document.vectorized = True
+            document.is_vectorized = True
             document.vectorized_at = datetime.now()
             db.session.commit()
             
@@ -392,7 +392,7 @@ def get_vectorization_status(doc_id):
                 'document_id': doc_id,
                 'document_name': document.name,
                 'file_type': vectorization_factory.get_file_type(document.file_path) if document.file_path else 'unknown',
-                'is_vectorized': document.vectorized,
+                'is_vectorized': document.is_vectorized,
                 'vectorized_at': document.vectorized_at.isoformat() if document.vectorized_at else None,
                 'vector_count': vector_count,
                 'is_supported': vectorization_factory.is_supported_file(document.file_path) if document.file_path else False
