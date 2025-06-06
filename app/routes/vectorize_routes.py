@@ -312,9 +312,19 @@ def execute_vectorization(doc_id):
                 'error': f'文件上传失败: {minio_result.get("error", "未知错误")}'
             }), 500
         
-        # 2. 生成向量数据
+        # 2. 生成向量数据（包含文档描述信息）
         text_chunks = [chunk.get('content', '').strip() for chunk in chunks if chunk.get('content', '').strip()]
-        vectors_data = vectorizer.generate_vectors_data(str(doc_id), text_chunks)
+        
+        # 如果文档有描述信息，将其包含到向量化中
+        if document.description and document.description.strip():
+            enhanced_chunks = []
+            for chunk in text_chunks:
+                # 为每个chunk添加文档描述作为上下文
+                enhanced_chunk = f"文档描述: {document.description.strip()}\n\n内容: {chunk}"
+                enhanced_chunks.append(enhanced_chunk)
+            vectors_data = vectorizer.generate_vectors_data(str(doc_id), text_chunks, enhanced_chunks)
+        else:
+            vectors_data = vectorizer.generate_vectors_data(str(doc_id), text_chunks)
         
         # 3. 插入向量数据到数据库
         vector_insert_success = False

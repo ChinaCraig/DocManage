@@ -51,6 +51,71 @@ class Config:
     # 模型配置
     EMBEDDING_MODEL = os.environ.get('EMBEDDING_MODEL') or 'all-MiniLM-L6-v2'
     
+    # LLM配置
+    LLM_PROVIDERS = {
+        'openai': {
+            'name': 'OpenAI GPT',
+            'models': {
+                'gpt-3.5-turbo': 'GPT-3.5 Turbo',
+                'gpt-4': 'GPT-4',
+                'gpt-4-turbo': 'GPT-4 Turbo'
+            },
+            'api_key': os.environ.get('OPENAI_API_KEY'),
+            'base_url': os.environ.get('OPENAI_BASE_URL')
+        },
+        'ollama': {
+            'name': 'Ollama (本地)',
+            'models': {
+                'llama2': 'Llama 2',
+                'qwen2': 'Qwen 2',
+                'chatglm3': 'ChatGLM3',
+                'baichuan2': 'Baichuan 2'
+            },
+            'base_url': os.environ.get('OLLAMA_BASE_URL') or 'http://localhost:11434'
+        },
+        'claude': {
+            'name': 'Anthropic Claude',
+            'models': {
+                'claude-3-haiku': 'Claude 3 Haiku',
+                'claude-3-sonnet': 'Claude 3 Sonnet',
+                'claude-3-opus': 'Claude 3 Opus'
+            },
+            'api_key': os.environ.get('ANTHROPIC_API_KEY')
+        },
+        'zhipu': {
+            'name': '智谱AI',
+            'models': {
+                'glm-4': 'GLM-4',
+                'glm-3-turbo': 'GLM-3 Turbo'
+            },
+            'api_key': os.environ.get('ZHIPU_API_KEY')
+        },
+        'deepseek': {
+            'name': 'DeepSeek',
+            'models': {
+                'deepseek-chat': 'DeepSeek Chat',
+                'deepseek-coder': 'DeepSeek Coder',
+                'deepseek-v3': 'DeepSeek V3'
+            },
+            'api_key': os.environ.get('DEEPSEEK_API_KEY'),
+            'base_url': os.environ.get('DEEPSEEK_BASE_URL') or 'https://api.deepseek.com'
+        }
+    }
+    
+    # 默认LLM配置
+    DEFAULT_LLM_PROVIDER = os.environ.get('DEFAULT_LLM_PROVIDER') or 'openai'
+    DEFAULT_LLM_MODEL = os.environ.get('DEFAULT_LLM_MODEL') or 'gpt-3.5-turbo'
+    
+    # LLM功能开关
+    ENABLE_LLM_QUERY_OPTIMIZATION = os.environ.get('ENABLE_LLM_QUERY_OPTIMIZATION', 'true').lower() == 'true'
+    ENABLE_LLM_RESULT_RERANKING = os.environ.get('ENABLE_LLM_RESULT_RERANKING', 'true').lower() == 'true'
+    ENABLE_LLM_ANSWER_GENERATION = os.environ.get('ENABLE_LLM_ANSWER_GENERATION', 'false').lower() == 'true'
+    
+    # LLM性能参数
+    LLM_TIMEOUT = int(os.environ.get('LLM_TIMEOUT') or 30)
+    LLM_MAX_CONTEXT_LENGTH = int(os.environ.get('LLM_MAX_CONTEXT_LENGTH') or 4000)
+    LLM_RERANK_BATCH_SIZE = int(os.environ.get('LLM_RERANK_BATCH_SIZE') or 20)
+    
     # 日志配置
     LOG_LEVEL = os.environ.get('LOG_LEVEL') or 'INFO'
     

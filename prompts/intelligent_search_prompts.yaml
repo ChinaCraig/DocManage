@@ -1,0 +1,256 @@
+# 智能检索对话提示词配置
+
+query_optimization:
+  system_prompt: |
+    你是一个专业的智能文档检索助手。你的核心任务是理解用户的查询意图，提取关键信息，并优化为最适合向量检索的查询。
+    
+    你需要：
+    1. 分析用户的真实意图和需求
+    2. 识别核心实体和概念
+    3. 扩展相关同义词和近义词
+    4. 考虑文档类型和领域特性
+    5. 生成精准的检索关键词
+
+  templates:
+    comprehensive: |
+      请深度分析用户查询，执行智能关键信息提取：
+
+      【用户查询】: {query}
+
+      【分析任务】:
+      1. 意图识别：用户想要找什么类型的信息？
+      2. 实体抽取：关键的人名、地名、机构名、专业术语
+      3. 概念提取：核心概念和主题
+      4. 关系识别：实体间的关系和上下文
+      5. 同义扩展：相关的同义词和近义词
+
+      【输出格式】:
+      核心关键词: [最重要的2-3个关键词]
+      扩展关键词: [相关的同义词和概念，3-5个]
+      检索优化: [最终用于向量检索的关键词组合，空格分隔]
+
+      【示例】:
+      用户查询: "公司的财务报表审计流程是怎样的"
+      核心关键词: 财务报表 审计流程
+      扩展关键词: 财务审核 会计报告 内部控制 审计程序 财务监督
+      检索优化: 财务报表 审计流程 财务审核 会计报告 审计程序
+
+      现在请分析上述查询：
+
+    business_focused: |
+      从商业文档检索角度分析用户查询：
+
+      【查询内容】: {query}
+
+      请识别：
+      • 业务流程关键词
+      • 管理层面术语  
+      • 操作执行要点
+      • 相关政策制度
+
+      直接输出优化后的商业检索关键词（空格分隔）：
+
+    technical_focused: |
+      从技术文档检索角度分析用户查询：
+
+      【查询内容】: {query}
+
+      请识别：
+      • 技术概念和术语
+      • 实现方法和工具
+      • 配置和参数
+      • 故障和解决方案
+
+      直接输出优化后的技术检索关键词（空格分隔）：
+
+    simple: |
+      请将用户查询优化为适合文档检索的关键词：
+
+      用户查询：{query}
+
+      提取核心概念，输出关键词（空格分隔）：
+
+  parameters:
+    max_tokens: 200
+    temperature: 0.3
+
+result_assembly:
+  system_prompt: |
+    你是一个专业的信息整合专家。基于用户查询和检索到的文档片段，生成结构化、准确、有用的答案。
+    
+    核心原则：
+    1. 信息必须完全基于提供的文档内容
+    2. 保持逻辑清晰，结构合理
+    3. 区分确定信息和推测信息
+    4. 提供信息来源和置信度
+    5. 针对用户意图提供实用建议
+
+  templates:
+    structured_answer: |
+      基于检索到的文档内容，为用户提供结构化回答：
+
+      【用户问题】: {query}
+
+      【文档内容】:
+      {context}
+
+      【回答要求】:
+      请按以下结构生成答案：
+
+      ## 直接回答
+      [针对用户问题的核心答案]
+
+      ## 详细说明  
+      [基于文档内容的详细解释]
+
+      ## 相关信息
+      [文档中的补充信息]
+
+      ## 信息来源
+      [引用的文档名称]
+
+      ## 建议操作
+      [如果适用，提供实用建议]
+
+      【注意】:
+      - 如果文档信息不足，明确说明
+      - 区分事实陈述和推理分析
+      - 保持客观和准确性
+
+    concise_answer: |
+      基于文档内容提供简洁准确的回答：
+
+      问题: {query}
+      文档内容: {context}
+
+      请提供：
+      1. 核心答案（2-3句话）
+      2. 关键要点（项目符号形式）
+      3. 信息来源（文档名称）
+
+      如果信息不足，请明确说明限制。
+
+    analytical_answer: |
+      基于文档内容进行深度分析回答：
+
+      【分析目标】: {query}
+      【资料来源】: {context}
+
+      【分析框架】:
+      1. 现状分析：根据文档描述的当前情况
+      2. 关键要素：识别重要的组成部分
+      3. 流程梳理：如果涉及流程，详细说明步骤
+      4. 风险考量：可能的问题和注意事项
+      5. 优化建议：基于文档内容的改进方向
+
+      请按此框架进行分析回答。
+
+    default: |
+      基于文档内容回答用户问题：
+
+      问题：{query}
+      文档内容：{context}
+
+      请提供准确、有用的答案：
+
+  parameters:
+    max_tokens: 800
+    temperature: 0.7
+
+# 特定场景的提示词
+scenario_prompts:
+  legal_document:
+    query_optimization: |
+      法律文档专业检索分析：
+      查询: {query}
+      
+      请提取：
+      • 法律条款关键词
+      • 法规政策术语
+      • 合规要求要点
+      • 风险控制概念
+      
+      输出法律检索关键词（空格分隔）：
+
+    result_assembly: |
+      基于法律文档内容回答：
+      问题: {query}
+      文档: {context}
+      
+      请提供：
+      1. 法律依据和条款
+      2. 合规要求
+      3. 操作指引
+      4. 风险提示
+      
+  financial_document:
+    query_optimization: |
+      财务文档专业检索分析：
+      查询: {query}
+      
+      请提取：
+      • 财务科目和指标
+      • 会计准则术语
+      • 审计控制要点
+      • 税务合规概念
+      
+      输出财务检索关键词（空格分隔）：
+
+    result_assembly: |
+      基于财务文档内容回答：
+      问题: {query}
+      文档: {context}
+      
+      请提供：
+      1. 财务数据和指标
+      2. 会计处理方法
+      3. 合规要求
+      4. 风险控制措施
+
+  hr_document:
+    query_optimization: |
+      人力资源文档专业检索分析：
+      查询: {query}
+      
+      请提取：
+      • 人事政策关键词
+      • 绩效管理术语
+      • 薪酬福利概念
+      • 培训发展要点
+      
+      输出HR检索关键词（空格分隔）：
+
+    result_assembly: |
+      基于HR文档内容回答：
+      问题: {query}
+      文档: {context}
+      
+      请提供：
+      1. 政策规定
+      2. 操作流程
+      3. 注意事项
+      4. 相关表单和工具
+
+# 提示词效果优化配置
+optimization_config:
+  query_analysis:
+    enable_intent_detection: true
+    enable_entity_extraction: true
+    enable_synonym_expansion: true
+    enable_context_understanding: true
+    
+  answer_generation:
+    require_source_citation: true
+    enable_confidence_scoring: true
+    enable_structured_output: true
+    enable_actionable_insights: true
+
+# A/B测试配置
+ab_testing:
+  query_optimization:
+    variant_a: "comprehensive"
+    variant_b: "business_focused"
+    
+  result_assembly:
+    variant_a: "structured_answer"
+    variant_b: "analytical_answer" 

@@ -495,23 +495,36 @@ class BaseVectorizer(ABC):
                 "error": str(e)
             }
     
-    def generate_vectors_data(self, document_id: str, text_chunks: List[str]) -> List[Dict[str, Any]]:
-        """生成向量数据"""
+    def generate_vectors_data(self, document_id: str, text_chunks: List[str], 
+                             enhanced_chunks: List[str] = None) -> List[Dict[str, Any]]:
+        """
+        生成向量数据
+        
+        Args:
+            document_id: 文档ID
+            text_chunks: 原始文本块（用于存储和显示）
+            enhanced_chunks: 增强文本块（用于向量化，包含额外上下文）
+        """
         vectors_data = []
         
-        for i, chunk in enumerate(text_chunks):
-            if not chunk.strip():
+        # 如果没有提供增强文本块，则使用原始文本块
+        if enhanced_chunks is None:
+            enhanced_chunks = text_chunks
+        
+        for i, (original_chunk, enhanced_chunk) in enumerate(zip(text_chunks, enhanced_chunks)):
+            if not original_chunk.strip():
                 continue
                 
             chunk_id = f"chunk_{i}_{str(uuid.uuid4())[:8]}"
-            vector = self.encode_text(chunk.strip())
+            # 使用增强文本进行向量化
+            vector = self.encode_text(enhanced_chunk.strip())
             
             if vector:
                 vectors_data.append({
                     'document_id': str(document_id),
                     'chunk_id': chunk_id,
-                    'text': chunk.strip(),
-                    'vector': vector
+                    'text': original_chunk.strip(),  # 存储原始文本
+                    'vector': vector  # 但向量基于增强文本
                 })
         
         return vectors_data

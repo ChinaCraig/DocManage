@@ -10,6 +10,15 @@ let nodeMap = {}; // 节点映射，用于快速查找
 let vectorizationMode = false; // 向量化模式标志
 let uploadAreaInitialized = false; // 上传区域初始化标志
 
+// LLM相关全局变量
+let availableLLMModels = [];
+let selectedLLMModel = '';
+let llmFeatures = {
+    query_optimization: false,
+    result_reranking: false,
+    answer_generation: false
+};
+
 // 页面加载完成后初始化
 document.addEventListener('DOMContentLoaded', function() {
     // 初始化统一界面
@@ -24,6 +33,9 @@ function initUnifiedInterface() {
     
     // 初始化搜索功能
     initSearchInput();
+    
+    // 初始化LLM模型选择器
+    initLLMModelSelector();
     
     // 初始化上传功能（只初始化一次）
     if (!uploadAreaInitialized) {
@@ -2451,6 +2463,9 @@ async function sendChatMessage() {
     // 获取用户选择的相似度等级
     const selectedSimilarity = similarityLevel ? similarityLevel.value : 'medium';
     
+    // 获取LLM配置
+    const llmConfig = getLLMConfig();
+    
     // 添加用户消息到聊天记录
     addChatMessage('user', message);
     chatInput.value = '';
@@ -2463,6 +2478,15 @@ async function sendChatMessage() {
     const thinkingId = addChatMessage('assistant', '', true);
     
     try {
+        // 构建请求数据
+        const requestData = {
+            query: message,
+            top_k: 5,
+            similarity_level: selectedSimilarity,
+            llm_model: llmConfig.model,
+            enable_llm: llmConfig.isAvailable
+        };
+        
         let response;
         if (searchStrategy === 'hybrid') {
             // 使用混合搜索
@@ -2471,11 +2495,7 @@ async function sendChatMessage() {
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({
-                    query: message,
-                    top_k: 5,
-                    similarity_level: selectedSimilarity
-                })
+                body: JSON.stringify(requestData)
             });
         } else {
             // 使用纯语义搜索
@@ -2484,11 +2504,7 @@ async function sendChatMessage() {
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({
-                    query: message,
-                    top_k: 5,
-                    similarity_level: selectedSimilarity
-                })
+                body: JSON.stringify(requestData)
             });
         }
         
@@ -2500,16 +2516,29 @@ async function sendChatMessage() {
         // 隐藏搜索策略提示
         hideSearchStrategyHint();
         
-        if (result.success && result.data.results && result.data.results.length > 0) {
-            // 显示搜索结果
-            const resultMessage = formatSearchResultsEnhanced(result.data, message);
+        if (result.success && (
+            (result.data.file_results && result.data.file_results.length > 0) || 
+            (result.data.results && result.data.results.length > 0)
+        )) {
+            // 如果有LLM答案，先显示LLM答案
+            if (result.data.llm_info && result.data.llm_info.answer) {
+                const llmMessage = formatLLMAnswer(result.data.llm_info.answer, result.data.llm_info);
+                addChatMessage('assistant', llmMessage);
+            }
+            
+            // 显示搜索结果（优先使用文件级别结果）
+            const resultMessage = formatFileSearchResults(result.data, message);
             addChatMessage('assistant', resultMessage);
             
             // 如果有搜索结果，自动预览第一个文档
-            const firstResult = result.data.results[0];
-            if (firstResult.document) {
-                highlightDocumentInTree(firstResult.document.id);
-                previewDocument(firstResult.document);
+            const fileResults = result.data.file_results || result.data.results;
+            if (fileResults && fileResults.length > 0) {
+                const firstFile = fileResults[0];
+                const document = firstFile.document || firstFile.document;
+                if (document) {
+                    highlightDocumentInTree(document.id);
+                    previewDocument(document);
+                }
             }
         } else {
             // 智能提示用户如何优化搜索
@@ -2545,8 +2574,48 @@ function determineSearchStrategy(query, similarityLevel) {
     return 'semantic';
 }
 
-function formatSearchResultsEnhanced(data, query) {
-    // 增强版搜索结果格式化
+// LLM答案格式化函数
+function formatLLMAnswer(llmAnswer, llmInfo) {
+    let message = `<div class="llm-answer-container">
+        <div class="llm-answer-header">
+            <i class="bi bi-robot"></i> <strong>AI智能分析</strong>`;
+    
+    // 显示LLM处理状态
+    if (llmInfo) {
+        message += `<div class="llm-status">`;
+        if (llmInfo.query_optimized) {
+            message += `<span class="llm-status-item optimization"><i class="bi bi-lightbulb"></i> 查询优化</span>`;
+        }
+        if (llmInfo.reranked) {
+            message += `<span class="llm-status-item rerank"><i class="bi bi-sort-down"></i> 结果重排序</span>`;
+        }
+        if (llmInfo.used) {
+            message += `<span class="llm-status-item answer"><i class="bi bi-chat-square-text"></i> 智能答案</span>`;
+        }
+        if (llmInfo.model) {
+            message += `<span class="llm-status-item model"><i class="bi bi-cpu"></i> ${llmInfo.model}</span>`;
+        }
+        message += `</div>`;
+    }
+    
+    message += `</div>
+        <div class="llm-answer-content">
+            ${escapeHtml(llmAnswer).replace(/\n/g, '<br>')}
+        </div>
+    </div>`;
+    
+    return message;
+}
+
+// HTML转义函数
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function formatFileSearchResults(data, query) {
+    // 文件级别搜索结果格式化（支持超链接）
     
     const similarityLabels = {
         'high': '高相关性 (≥60%)',
@@ -2563,32 +2632,81 @@ function formatSearchResultsEnhanced(data, query) {
         searchTypeText = ` (智能混合搜索: ${data.semantic_count || 0}个语义 + ${data.keyword_count || 0}个关键词)`;
     }
     
-    let message = `🔍 找到了 ${data.results.length} 个相关结果 (${levelText})${searchTypeText}：\n\n`;
+    // 显示查询优化信息
+    let optimizationInfo = '';
+    if (data.llm_info && data.llm_info.query_optimized && data.llm_info.original_query) {
+        optimizationInfo = `<div class="query-optimization-info">
+            <i class="bi bi-lightbulb text-warning"></i> 
+            <small>查询已优化：${escapeHtml(data.llm_info.original_query)} → ${escapeHtml(data.llm_info.optimized_query || query)}</small>
+        </div>`;
+    }
     
-    data.results.forEach((result, index) => {
-        const score = (result.score * 100).toFixed(1);
-        const searchIcon = result.search_type === 'keyword' ? '🔤' : 
-                          result.search_type === 'hybrid' ? '🧠' : '🎯';
+    // 优先使用file_results，回退到results
+    const fileResults = data.file_results || data.results;
+    const resultCount = data.total_files || fileResults.length;
+    
+    let message = optimizationInfo + `📁 找到了 ${resultCount} 个相关文件 (${levelText})${searchTypeText}：\n\n`;
+    
+    fileResults.forEach((fileResult, index) => {
+        const document = fileResult.document;
+        const score = (fileResult.score * 100).toFixed(1);
         
-        message += `${index + 1}. ${searchIcon} **${result.document.name}** (${score}%)\n`;
+        // 确定搜索类型图标
+        const searchTypes = fileResult.search_types || [fileResult.search_type] || ['semantic'];
+        const searchIcon = searchTypes.includes('hybrid') ? '🧠' : 
+                          searchTypes.includes('keyword') ? '🔤' : '🎯';
         
-        // 高亮匹配的关键词
-        let displayText = result.text.substring(0, 120);
-        if (result.matched_keywords && result.matched_keywords.length > 0) {
-            result.matched_keywords.forEach(keyword => {
-                const regex = new RegExp(`(${keyword})`, 'gi');
-                displayText = displayText.replace(regex, '**$1**');
-            });
+        // 显示重排序标记
+        let rerankMark = '';
+        if (data.llm_info && data.llm_info.reranked) {
+            rerankMark = ' <span class="rerank-indicator">🔄</span>';
         }
-        message += `${displayText}...\n\n`;
+        
+        // 创建可点击的文件链接
+        const fileName = escapeHtml(document.name);
+        const fileLink = `<a href="#" class="file-link" onclick="selectFileFromChat(${document.id}); return false;" title="点击定位并预览文件">${fileName}</a>`;
+        
+        message += `${index + 1}. ${searchIcon} **${fileLink}** (${score}%)${rerankMark}\n`;
+        
+        // 显示文件信息
+        if (document.file_type) {
+            message += `   📄 类型: ${document.file_type.toUpperCase()}`;
+        }
+        if (fileResult.chunk_count) {
+            message += ` | 📊 匹配片段: ${fileResult.chunk_count}个`;
+        }
+        message += `\n`;
+        
+        // 显示匹配的内容预览
+        if (fileResult.chunks && fileResult.chunks.length > 0) {
+            const topChunk = fileResult.chunks[0];
+            let displayText = topChunk.text ? topChunk.text.substring(0, 100) : '';
+            
+            // 高亮匹配的关键词（如果有）
+            if (topChunk.matched_keywords && topChunk.matched_keywords.length > 0) {
+                topChunk.matched_keywords.forEach(keyword => {
+                    const regex = new RegExp(`(${keyword})`, 'gi');
+                    displayText = displayText.replace(regex, '**$1**');
+                });
+            }
+            
+            message += `   💬 内容摘要: ${displayText}...\n`;
+        }
+        
+        message += `\n`;
     });
     
-    message += `✨ 提示：点击文档名称可以查看完整内容预览。`;
+    message += `✨ 提示：点击文件名可自动定位到文档树并预览内容。`;
     if (data.similarity_level !== 'any') {
         message += `<br>💡 如需更多结果，可降低相关性要求后重新搜索。`;
     }
     
     return message.replace(/\n/g, '<br>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+}
+
+function formatSearchResultsEnhanced(data, query) {
+    // 兼容旧版本的搜索结果格式化（向后兼容）
+    return formatFileSearchResults(data, query);
 }
 
 function generateSearchSuggestions(query, similarityLevel, searchStrategy) {
@@ -3359,5 +3477,241 @@ function updateVectorizationStatus(docId, isVectorized, vectorizedAt) {
                 `;
             }
         }
+    }
+}
+
+// ============ LLM模型管理功能 ============
+
+async function initLLMModelSelector() {
+    // 初始化LLM模型选择器
+    try {
+        await loadLLMModels();
+        setupLLMModelChangeHandler();
+    } catch (error) {
+        console.error('初始化LLM模型选择器失败:', error);
+        showError('加载LLM模型配置失败: ' + error.message);
+    }
+}
+
+async function loadLLMModels() {
+    // 从后端加载可用的LLM模型
+    try {
+        const response = await fetch('/api/config/llm-models');
+        const result = await response.json();
+        
+        if (result.success) {
+            availableLLMModels = result.data.models;
+            llmFeatures = result.data.features;
+            selectedLLMModel = result.data.default;
+            
+            updateLLMModelSelector();
+            updateLLMFeatureStatus();
+        } else {
+            throw new Error(result.error || '获取LLM模型配置失败');
+        }
+    } catch (error) {
+        console.error('加载LLM模型失败:', error);
+        
+        // 设置默认选项
+        const llmSelect = document.getElementById('llmModelSelect');
+        if (llmSelect) {
+            llmSelect.innerHTML = '<option value="">LLM服务不可用</option>';
+            llmSelect.disabled = true;
+        }
+        
+        throw error;
+    }
+}
+
+function updateLLMModelSelector() {
+    // 更新LLM模型选择器的选项
+    const llmSelect = document.getElementById('llmModelSelect');
+    if (!llmSelect) return;
+    
+    // 清空现有选项
+    llmSelect.innerHTML = '';
+    
+    if (availableLLMModels.length === 0) {
+        llmSelect.innerHTML = '<option value="">暂无可用模型</option>';
+        llmSelect.disabled = true;
+        return;
+    }
+    
+    // 按provider分组显示
+    const groupedModels = {};
+    availableLLMModels.forEach(model => {
+        if (!groupedModels[model.provider_name]) {
+            groupedModels[model.provider_name] = [];
+        }
+        groupedModels[model.provider_name].push(model);
+    });
+    
+    // 添加选项
+    Object.entries(groupedModels).forEach(([providerName, models]) => {
+        const optgroup = document.createElement('optgroup');
+        optgroup.label = providerName;
+        
+        models.forEach(model => {
+            const option = document.createElement('option');
+            option.value = model.full_key;
+            option.textContent = model.model_name;
+            option.disabled = !model.is_available;
+            
+            if (!model.is_available) {
+                option.textContent += ' (不可用)';
+            }
+            
+            optgroup.appendChild(option);
+        });
+        
+        llmSelect.appendChild(optgroup);
+    });
+    
+    // 设置默认选择
+    if (selectedLLMModel) {
+        llmSelect.value = selectedLLMModel;
+    }
+    
+    llmSelect.disabled = false;
+}
+
+function setupLLMModelChangeHandler() {
+    // 设置LLM模型选择变化处理器
+    const llmSelect = document.getElementById('llmModelSelect');
+    if (!llmSelect) return;
+    
+    llmSelect.addEventListener('change', function(e) {
+        selectedLLMModel = e.target.value;
+        console.log('选择的LLM模型:', selectedLLMModel);
+        
+        // 可以在这里添加模型切换的后续处理
+        if (selectedLLMModel) {
+            showInfo(`已选择模型: ${getSelectedModelDisplayName()}`);
+        }
+    });
+}
+
+function getSelectedModelDisplayName() {
+    // 获取当前选中模型的显示名称
+    if (!selectedLLMModel) return '未选择';
+    
+    const model = availableLLMModels.find(m => m.full_key === selectedLLMModel);
+    return model ? model.display_name : selectedLLMModel;
+}
+
+function updateLLMFeatureStatus() {
+    // 更新LLM功能状态显示
+    console.log('LLM功能状态:', llmFeatures);
+    
+    // 可以在这里添加UI更新逻辑，比如显示哪些功能已启用
+    if (llmFeatures.query_optimization) {
+        console.log('✅ 查询优化功能已启用');
+    }
+    if (llmFeatures.result_reranking) {
+        console.log('✅ 结果重排序功能已启用');
+    }
+    if (llmFeatures.answer_generation) {
+        console.log('✅ 答案生成功能已启用');
+    }
+}
+
+function isLLMAvailable() {
+    // 检查是否有可用的LLM模型
+    return selectedLLMModel && availableLLMModels.some(m => m.full_key === selectedLLMModel && m.is_available);
+}
+
+function getLLMConfig() {
+    // 获取当前LLM配置信息
+    return {
+        model: selectedLLMModel,
+        features: llmFeatures,
+        isAvailable: isLLMAvailable()
+    };
+}
+
+// 从聊天中选择文件的处理函数
+async function selectFileFromChat(docId) {
+    try {
+        console.log(`开始选择文件，文档ID: ${docId}`);
+        
+        // 1. 首先尝试从当前nodeMap中查找
+        let node = findNodeById(docId);
+        console.log(`在nodeMap中查找结果:`, node ? `找到文档 ${node.name}` : '未找到');
+        
+        if (!node) {
+            // 2. 如果nodeMap中没有，从API获取文档详情
+            console.log(`文档 ${docId} 不在当前nodeMap中，从API获取详情...`);
+            
+            try {
+                const response = await fetch(`/api/documents/${docId}/detail`);
+                const result = await response.json();
+                console.log('API响应:', result);
+                
+                if (result.success) {
+                    node = result.data;
+                    console.log(`通过API获取到文档: ${node.name}`);
+                } else {
+                    console.error('API返回失败:', result);
+                    showToast('无法获取文档信息', 'warning');
+                    return;
+                }
+            } catch (apiError) {
+                console.error('API获取文档详情失败:', apiError);
+                showToast('获取文档信息时出现错误', 'error');
+                return;
+            }
+        }
+        
+        console.log('准备执行文档定位和预览操作...');
+        
+        // 3. 在文档树中高亮显示该文件
+        try {
+            highlightDocumentInTree(docId);
+            console.log('文档树高亮完成');
+        } catch (error) {
+            console.warn('文档树高亮失败:', error);
+        }
+        
+        // 4. 展开父节点以确保文件可见（如果在树中）
+        const nodeElement = document.querySelector(`[data-node-id="${docId}"]`);
+        console.log(`DOM中查找节点元素:`, nodeElement ? '找到' : '未找到');
+        if (nodeElement) {
+            try {
+                expandParentNodes(nodeElement);
+                console.log('父节点展开完成');
+            } catch (error) {
+                console.warn('展开父节点失败:', error);
+            }
+        }
+        
+        // 5. 预览文件内容
+        try {
+            console.log('开始预览文档...');
+            await previewDocument(node);
+            console.log('文档预览完成');
+        } catch (error) {
+            console.error('预览文档失败:', error);
+            showToast('预览文档时出现错误', 'warning');
+        }
+        
+        // 6. 设置为选中状态
+        try {
+            selectedNode = node;
+            if (nodeElement) {
+                clearTreeSelection();
+                nodeElement.classList.add('selected');
+                console.log('节点选中状态设置完成');
+            }
+        } catch (error) {
+            console.warn('设置选中状态失败:', error);
+        }
+        
+        // 7. 显示成功提示
+        showToast(`已定位到文档：${node.name}`, 'success', 2000);
+        console.log(`文件选择完成: ${node.name}`);
+        
+    } catch (error) {
+        console.error('选择文件失败:', error);
+        showToast('定位文档时出现错误', 'error');
     }
 }

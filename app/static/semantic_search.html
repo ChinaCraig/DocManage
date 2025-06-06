@@ -689,17 +689,39 @@
             display: flex;
             align-items: center;
             gap: 8px;
+            flex-wrap: wrap;
         }
 
         .similarity-settings select {
             border: 1px solid #ced4da;
             border-radius: 4px;
             padding: 2px 8px;
+            transition: all 0.2s ease;
         }
 
         .similarity-settings select:focus {
             border-color: #17a2b8;
             box-shadow: 0 0 0 0.2rem rgba(23, 162, 184, 0.25);
+        }
+        
+        .similarity-settings select:disabled {
+            background-color: #f8f9fa;
+            opacity: 0.65;
+            cursor: not-allowed;
+        }
+        
+        .similarity-settings .text-muted {
+            white-space: nowrap;
+        }
+        
+        /* LLM模型选择器特殊样式 */
+        #llmModelSelect {
+            max-width: 220px;
+        }
+        
+        #llmModelSelect option:disabled {
+            color: #6c757d;
+            font-style: italic;
         }
 
         .chat-messages {
@@ -715,6 +737,122 @@
             border-top: 1px solid #e9ecef;
             background: #f8f9fa;
             border-radius: 0 0 8px 8px;
+        }
+
+        /* LLM答案容器样式 */
+        .llm-answer-container {
+            background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%);
+            border: 1px solid #bbdefb;
+            border-radius: 12px;
+            padding: 16px;
+            margin: 10px 0;
+            box-shadow: 0 2px 8px rgba(63, 81, 181, 0.1);
+        }
+
+        .llm-answer-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .llm-answer-header strong {
+            color: #3f51b5;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .llm-status {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .llm-status-item {
+            background: rgba(255, 255, 255, 0.8);
+            color: #424242;
+            padding: 4px 8px;
+            border-radius: 16px;
+            font-size: 11px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            border: 1px solid rgba(0, 0, 0, 0.1);
+        }
+
+        .llm-status-item.optimization {
+            color: #f57f17;
+            border-color: #fff3c4;
+            background: #fff9c4;
+        }
+
+        .llm-status-item.rerank {
+            color: #7b1fa2;
+            border-color: #e1bee7;
+            background: #f3e5f5;
+        }
+
+        .llm-status-item.answer {
+            color: #388e3c;
+            border-color: #c8e6c9;
+            background: #e8f5e8;
+        }
+
+        .llm-status-item.model {
+            color: #1976d2;
+            border-color: #bbdefb;
+            background: #e3f2fd;
+        }
+
+        .llm-answer-content {
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 8px;
+            padding: 14px;
+            line-height: 1.6;
+            color: #333;
+            font-size: 14px;
+            border: 1px solid rgba(0, 0, 0, 0.05);
+        }
+
+        /* 查询优化信息样式 */
+        .query-optimization-info {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 6px;
+            padding: 10px;
+            margin-bottom: 12px;
+            color: #856404;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* 文件链接样式 */
+        .file-link {
+            color: #007bff !important;
+            text-decoration: none !important;
+            border-bottom: 1px dashed #007bff;
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+
+        .file-link:hover {
+            color: #0056b3 !important;
+            border-bottom-color: #0056b3;
+            background-color: rgba(0, 123, 255, 0.1);
+            padding: 1px 3px;
+            border-radius: 3px;
+        }
+
+        .file-link:active {
+            color: #004085 !important;
+            transform: translateY(1px);
         }
 
         /* 文档详情按钮样式 */
@@ -1793,11 +1931,15 @@
                                     </h6>
                                     <div class="similarity-settings">
                                         <small class="text-muted me-2">相关性要求：</small>
-                                        <select id="similarityLevel" class="form-select form-select-sm" style="width: auto; font-size: 12px;">
+                                        <select id="similarityLevel" class="form-select form-select-sm me-3" style="width: auto; font-size: 12px;">
                                             <option value="high">高相关性</option>
                                             <option value="medium" selected>中等相关性</option>
                                             <option value="low">低相关性</option>
                                             <option value="any">显示所有</option>
+                                        </select>
+                                        <small class="text-muted me-2">大语言模型：</small>
+                                        <select id="llmModelSelect" class="form-select form-select-sm" style="width: auto; font-size: 12px; min-width: 180px;">
+                                            <option value="">加载中...</option>
                                         </select>
                                     </div>
                                 </div>
@@ -2140,6 +2282,6 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="/js/integrated_app.js"></script>
+    <script src="/js/integrated_app.js?v=2025061002"></script>
 </body>
 </html> 
