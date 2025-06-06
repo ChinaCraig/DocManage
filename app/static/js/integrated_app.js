@@ -2516,34 +2516,52 @@ async function sendChatMessage() {
         // 隐藏搜索策略提示
         hideSearchStrategyHint();
         
-        if (result.success && (
-            (result.data.file_results && result.data.file_results.length > 0) || 
-            (result.data.results && result.data.results.length > 0)
-        )) {
-            // 如果有LLM答案，先显示LLM答案
-            if (result.data.llm_info && result.data.llm_info.answer) {
-                const llmMessage = formatLLMAnswer(result.data.llm_info.answer, result.data.llm_info);
-                addChatMessage('assistant', llmMessage);
-            }
-            
-            // 显示搜索结果（优先使用文件级别结果）
-            const resultMessage = formatFileSearchResults(result.data, message);
-            addChatMessage('assistant', resultMessage);
-            
-            // 如果有搜索结果，自动预览第一个文档
-            const fileResults = result.data.file_results || result.data.results;
-            if (fileResults && fileResults.length > 0) {
-                const firstFile = fileResults[0];
-                const document = firstFile.document || firstFile.document;
-                if (document) {
+        if (result.success) {
+            // 检查是否是文档分析结果
+            if (result.data.is_analysis && result.data.analysis_result) {
+                // 对于分析结果，只显示分析内容
+                const analysisMessage = formatAnalysisResults(result.data);
+                addChatMessage('assistant', analysisMessage);
+                
+                // 如果分析成功且有文档，自动预览该文档
+                if (result.data.analysis_result.type === 'success' && result.data.analysis_result.document) {
+                    const document = result.data.analysis_result.document;
                     highlightDocumentInTree(document.id);
                     previewDocument(document);
                 }
+            } else if ((result.data.file_results && result.data.file_results.length > 0) || 
+                      (result.data.results && result.data.results.length > 0)) {
+                // 普通搜索结果处理
+                
+                // 如果有LLM答案，先显示LLM答案
+                if (result.data.llm_info && result.data.llm_info.answer) {
+                    const llmMessage = formatLLMAnswer(result.data.llm_info.answer, result.data.llm_info);
+                    addChatMessage('assistant', llmMessage);
+                }
+                
+                // 显示搜索结果（优先使用文件级别结果）
+                const resultMessage = formatFileSearchResults(result.data, message);
+                addChatMessage('assistant', resultMessage);
+                
+                // 如果有搜索结果，自动预览第一个文档
+                const fileResults = result.data.file_results || result.data.results;
+                if (fileResults && fileResults.length > 0) {
+                    const firstFile = fileResults[0];
+                    const document = firstFile.document || firstFile.document;
+                    if (document) {
+                        highlightDocumentInTree(document.id);
+                        previewDocument(document);
+                    }
+                }
+            } else {
+                // 智能提示用户如何优化搜索
+                const suggestionMessage = generateSearchSuggestions(message, selectedSimilarity, searchStrategy);
+                addChatMessage('assistant', suggestionMessage);
             }
         } else {
-            // 智能提示用户如何优化搜索
-            const suggestionMessage = generateSearchSuggestions(message, selectedSimilarity, searchStrategy);
-            addChatMessage('assistant', suggestionMessage);
+            // 处理错误情况
+            const errorMessage = result.error || '搜索时出现未知错误';
+            addChatMessage('assistant', `❌ ${errorMessage}`);
         }
     } catch (error) {
         // 确保在任何错误情况下都移除thinking消息
@@ -2615,6 +2633,11 @@ function escapeHtml(text) {
 }
 
 function formatFileSearchResults(data, query) {
+    // 检查是否是文档分析结果
+    if (data.is_analysis && data.analysis_result) {
+        return formatAnalysisResults(data);
+    }
+    
     // 文件级别搜索结果格式化（支持超链接）
     
     const similarityLabels = {
@@ -3714,4 +3737,250 @@ async function selectFileFromChat(docId) {
         console.error('选择文件失败:', error);
         showToast('定位文档时出现错误', 'error');
     }
+}
+
+// ==================== 文档分析功能 ====================
+// 已集成到智能检索对话中，模态框相关功能已移除
+
+// 模态框相关的分析函数已移除，分析功能已集成到聊天对话中
+
+// 旧的模态框版本的 displayAnalysisResults 函数已移除
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text || '';
+    return div.innerHTML;
+}
+
+function formatAnalysisResults(data) {
+    const result = data.analysis_result;
+    const query = data.query;
+    
+    let html = `<div class="analysis-result">`;
+    
+    // 显示分析查询
+    html += `<div class="analysis-header">
+        <h4><i class="bi bi-graph-up-arrow text-primary"></i> 文档分析结果</h4>
+        <p class="text-muted">查询：${escapeHtml(query)}</p>
+    </div>`;
+    
+    switch (result.type) {
+        case 'error':
+            html += `<div class="alert alert-warning">
+                <i class="bi bi-exclamation-triangle"></i>
+                ${escapeHtml(result.message)}
+            </div>`;
+            break;
+            
+        case 'not_found':
+            html += `<div class="alert alert-danger">
+                <h5><i class="bi bi-file-x"></i> 文档未找到</h5>
+                <p>${escapeHtml(result.message)}</p>
+                ${result.searched_name ? `<small class="text-muted">搜索名称：${escapeHtml(result.searched_name)}</small>` : ''}
+            </div>`;
+            break;
+            
+        case 'multiple_found':
+            html += `<div class="alert alert-info">
+                <h5><i class="bi bi-files"></i> 找到多个文档</h5>
+                <p>${escapeHtml(result.message)}</p>
+                <div class="document-list mt-3">`;
+            
+            result.documents.forEach((doc, index) => {
+                const fileIcon = getFileIcon(doc.file_type);
+                html += `
+                    <div class="document-item" onclick="selectFileFromChat(${doc.id})">
+                        <i class="bi ${fileIcon}"></i>
+                        <span class="doc-name">${escapeHtml(doc.name)}</span>
+                        <small class="doc-path text-muted">${escapeHtml(doc.path)}</small>
+                    </div>
+                `;
+            });
+            
+            html += `</div>
+                <small class="text-muted mt-2 d-block">点击文档名称选择要分析的文档</small>
+            </div>`;
+            break;
+            
+        case 'no_model':
+            html += `<div class="alert alert-warning">
+                <h5><i class="bi bi-cpu"></i> 需要选择AI模型</h5>
+                <p>${escapeHtml(result.message)}</p>
+            </div>`;
+            break;
+            
+        case 'analysis_failed':
+            html += `<div class="alert alert-danger">
+                <h5><i class="bi bi-x-circle"></i> 分析失败</h5>
+                <p>${escapeHtml(result.message)}</p>
+            </div>`;
+            break;
+            
+        case 'success':
+            const analysis = result.analysis;
+            const document = result.document;
+            
+            html += `<div class="alert alert-success">
+                <h5><i class="bi bi-check-circle"></i> ${escapeHtml(result.message)}</h5>
+            </div>`;
+            
+            // 文档类型分析 - 更突出的显示
+            html += `<div class="card mb-3 border-primary">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="bi bi-file-earmark-check"></i> 此类文件为 <strong>${escapeHtml(analysis.document_type)}</strong> 类文件</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-8">
+                            <p class="mb-2"><strong>文档名称：</strong><a href="#" onclick="selectFileFromChat(${document.id}); return false;" class="file-link">${escapeHtml(document.name)}</a></p>
+                            <p class="mb-2"><strong>识别置信度：</strong>
+                                <span class="badge ${(analysis.confidence * 100) > 80 ? 'bg-success' : (analysis.confidence * 100) > 60 ? 'bg-warning' : 'bg-secondary'}">${(analysis.confidence * 100).toFixed(1)}%</span>
+                            </p>
+                        </div>
+                        <div class="col-md-4">
+                            <p class="mb-2"><strong>使用模型：</strong><code class="small">${escapeHtml(result.llm_model)}</code></p>
+                            ${document.tags && document.tags.length > 0 ? 
+                                `<p class="mb-0"><strong>标签：</strong>${document.tags.map(tag => `<span class="badge me-1" style="background-color: ${tag.color}">${escapeHtml(tag.name)}</span>`).join('')}</p>` : 
+                                '<p class="mb-0"><strong>标签：</strong><span class="text-muted">无标签</span></p>'
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+            
+            // 内容完整性分析
+            html += `<div class="card mb-3">
+                <div class="card-header">
+                    <h6><i class="bi bi-list-check text-info"></i> 需要这些内容</h6>
+                </div>
+                <div class="card-body">`;
+            
+            // 解析分析结果，提取已有和缺失的内容
+            const existingItems = [];
+            const missingItems = analysis.missing_items || [];
+            
+            // 如果有当前结构分析，尝试从中提取已有内容
+            if (analysis.current_structure_analysis) {
+                // 简单的解析逻辑，寻找"已有"、"存在"、"包含"等关键词
+                const structureText = analysis.current_structure_analysis;
+                const lines = structureText.split(/[。；\n]/);
+                lines.forEach(line => {
+                    if (line.includes('已有') || line.includes('存在') || line.includes('包含') || line.includes('具备')) {
+                        const cleaned = line.trim().replace(/^[0-9]+[\.\)]\s*/, '').replace(/[\u4e00-\u9fff]*[:：]\s*/, '');
+                        if (cleaned && cleaned.length > 5 && cleaned.length < 100) {
+                            existingItems.push(cleaned);
+                        }
+                    }
+                });
+            }
+            
+            // 如果没有提取到已有内容，使用默认描述
+            if (existingItems.length === 0 && analysis.current_structure_analysis) {
+                existingItems.push('基本文档结构完整');
+            }
+            
+            // 显示已有内容
+            if (existingItems.length > 0) {
+                html += `<div class="content-status-section mb-3">
+                    <h6 class="text-success"><i class="bi bi-check-circle-fill"></i> 已有内容</h6>
+                    <ul class="content-list existing-content">`;
+                
+                existingItems.forEach((item, index) => {
+                    html += `<li class="content-item existing">
+                        <span class="item-number">${index + 1}.</span>
+                        <span class="item-text">${escapeHtml(item)}</span>
+                        <span class="status-badge badge bg-success ms-2">✓ 存在</span>
+                    </li>`;
+                });
+                
+                html += `</ul></div>`;
+            }
+            
+            // 显示缺失内容
+            if (missingItems.length > 0) {
+                html += `<div class="content-status-section">
+                    <h6 class="text-warning"><i class="bi bi-exclamation-triangle-fill"></i> 缺失内容</h6>
+                    <ul class="content-list missing-content">`;
+                
+                missingItems.forEach((item, index) => {
+                    html += `<li class="content-item missing">
+                        <span class="item-number">${existingItems.length + index + 1}.</span>
+                        <span class="item-text">${escapeHtml(item)}</span>
+                        <span class="status-badge badge bg-warning ms-2">⚠ 缺失</span>
+                    </li>`;
+                });
+                
+                html += `</ul></div>`;
+            } else {
+                html += `<div class="alert alert-success">
+                    <i class="bi bi-check-circle"></i> 文档内容完整，未发现明显缺失项目
+                </div>`;
+            }
+            
+            html += `</div></div>`;
+            
+            // 详细结构分析（可折叠）
+            if (analysis.current_structure_analysis) {
+                html += `<div class="card mb-3">
+                    <div class="card-header">
+                        <h6 class="mb-0">
+                            <button class="btn btn-link p-0 text-decoration-none" type="button" data-bs-toggle="collapse" data-bs-target="#structureDetails" aria-expanded="false">
+                                <i class="bi bi-diagram-3 text-info"></i> 详细结构分析 <i class="bi bi-chevron-down"></i>
+                            </button>
+                        </h6>
+                    </div>
+                    <div class="collapse" id="structureDetails">
+                        <div class="card-body">
+                            <div class="text-break">${escapeHtml(analysis.current_structure_analysis)}</div>
+                        </div>
+                    </div>
+                </div>`;
+            }
+            
+            // 优化建议
+            if (analysis.suggestions && analysis.suggestions.length > 0) {
+                html += `<div class="card mb-3">
+                    <div class="card-header">
+                        <h6><i class="bi bi-lightbulb text-success"></i> 优化建议</h6>
+                    </div>
+                    <div class="card-body">
+                        <ol class="suggestion-list">`;
+                
+                analysis.suggestions.forEach(suggestion => {
+                    html += `<li class="suggestion-item">
+                        <i class="bi bi-arrow-right text-primary"></i>
+                        <span class="text-break">${escapeHtml(suggestion)}</span>
+                    </li>`;
+                });
+                
+                html += `</ol>
+                    </div>
+                </div>`;
+            }
+            
+            // 推荐模板
+            if (analysis.template_recommendation) {
+                html += `<div class="card mb-3">
+                    <div class="card-header">
+                        <h6><i class="bi bi-files text-primary"></i> 推荐模板</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="alert alert-info mb-0">
+                            <i class="bi bi-info-circle"></i> <strong>推荐使用：</strong>${escapeHtml(analysis.template_recommendation)}
+                        </div>
+                    </div>
+                </div>`;
+            }
+            
+            break;
+            
+        default:
+            html += `<div class="alert alert-secondary">
+                <p>未知的分析结果类型：${escapeHtml(result.type)}</p>
+            </div>`;
+    }
+    
+    html += `</div>`;
+    
+    return html;
 }

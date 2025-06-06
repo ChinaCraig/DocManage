@@ -500,4 +500,140 @@ def download_document(doc_id):
         logger.error(f"错误详情: {type(e).__name__}: {str(e)}")
         import traceback
         logger.error(f"堆栈跟踪: {traceback.format_exc()}")
-        abort(500) 
+        abort(500)
+
+@document_bp.route('/<int:doc_id>/analyze', methods=['POST'])
+def analyze_document_structure(doc_id):
+    """分析文档结构并提供改进建议"""
+    try:
+        # 获取请求参数
+        data = request.get_json() or {}
+        llm_model = data.get('llm_model')
+        
+        if not llm_model:
+            return jsonify({
+                'success': False,
+                'error': 'LLM模型参数是必需的'
+            }), 400
+        
+        # 获取文档信息
+        document = DocumentNode.query.get_or_404(doc_id)
+        
+        if document.is_deleted:
+            return jsonify({
+                'success': False,
+                'error': '文档已删除'
+            }), 404
+        
+        # 获取文档标签信息
+        document_tags = [tag.to_dict() for tag in document.tags]
+        
+        # 构建文档树结构
+        def build_document_tree(node):
+            """递归构建文档树"""
+            result = {
+                'id': node.id,
+                'name': node.name,
+                'type': node.type,
+                'file_type': node.file_type,
+                'description': node.description,
+                'children': []
+            }
+            
+            # 获取子节点
+            children = DocumentNode.query.filter_by(
+                parent_id=node.id,
+                is_deleted=False
+            ).order_by(DocumentNode.type.desc(), DocumentNode.name).all()
+            
+            for child in children:
+                result['children'].append(build_document_tree(child))
+            
+            return result
+        
+        document_tree = build_document_tree(document)
+        
+        # 调用LLM分析服务
+        from app.services.llm_service import LLMService
+        
+        analysis_result = LLMService.analyze_document_structure(
+            document_name=document.name,
+            document_tags=document_tags,
+            document_tree=document_tree,
+            llm_model=llm_model
+        )
+        
+        if not analysis_result:
+            return jsonify({
+                'success': False,
+                'error': '文档结构分析失败'
+            }), 500
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'document_info': {
+                    'id': document.id,
+                    'name': document.name,
+                    'type': document.type,
+                    'tags': document_tags
+                },
+                'analysis': analysis_result,
+                'llm_model': llm_model
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"文档结构分析失败: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@document_bp.route('/search-by-name', methods=['GET'])
+def search_documents_by_name():
+    """根据文档名称搜索文档"""
+    try:
+        query = request.args.get('query', '').strip()
+        
+        if not query:
+            return jsonify({
+                'success': False,
+                'error': '搜索查询不能为空'
+            }), 400
+        
+        # 模糊搜索文档名称
+        documents = DocumentNode.query.filter(
+            DocumentNode.name.contains(query),
+            DocumentNode.is_deleted == False
+        ).limit(10).all()
+        
+        results = []
+        for doc in documents:
+            doc_data = doc.to_dict()
+            
+            # 添加路径信息
+            path_parts = []
+            current = doc
+            while current.parent_id:
+                parent = DocumentNode.query.get(current.parent_id)
+                if parent and not parent.is_deleted:
+                    path_parts.append(parent.name)
+                    current = parent
+                else:
+                    break
+            
+            doc_data['path'] = ' > '.join(reversed(path_parts)) if path_parts else '根目录'
+            results.append(doc_data)
+        
+        return jsonify({
+            'success': True,
+            'data': results
+        })
+        
+    except Exception as e:
+        logger.error(f"搜索文档失败: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500 

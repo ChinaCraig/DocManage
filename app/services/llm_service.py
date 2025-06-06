@@ -408,6 +408,104 @@ class DeepSeekClient(BaseLLMClient):
             logger.error(f"DeepSeek答案生成失败: {e}")
             return "无法生成答案，请查看文档内容。"
 
+class OllamaClient(BaseLLMClient):
+    """Ollama客户端实现"""
+    
+    def __init__(self, model: str):
+        provider_config = Config.LLM_PROVIDERS['ollama']
+        super().__init__(
+            model=model,
+            api_key="",  # Ollama不需要API密钥
+            base_url=provider_config['base_url']
+        )
+    
+    def _make_request(self, data: Dict, headers: Dict = None) -> Dict:
+        """Ollama专用的HTTP请求方法"""
+        try:
+            default_headers = {
+                'Content-Type': 'application/json'
+            }
+            if headers:
+                default_headers.update(headers)
+            
+            response = requests.post(
+                f"{self.base_url}/api/chat",
+                json=data,
+                headers=default_headers,
+                timeout=self.timeout
+            )
+            response.raise_for_status()
+            return response.json()
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Ollama请求失败: {e}")
+            raise Exception(f"Ollama服务调用失败: {str(e)}")
+    
+    def optimize_query(self, query: str, scenario: str = None, template: str = None) -> str:
+        """使用Ollama优化查询"""
+        try:
+            prompt = f"""请将用户查询优化为适合文档检索的关键词：
+
+用户查询：{query}
+
+输出关键词（空格分隔）："""
+
+            data = {
+                "model": self.model,
+                "messages": [
+                    {"role": "system", "content": "你是文档检索查询优化助手。"},
+                    {"role": "user", "content": prompt}
+                ],
+                "stream": False
+            }
+            
+            response = self._make_request(data)
+            return response['message']['content'].strip()
+            
+        except Exception as e:
+            logger.error(f"Ollama查询优化失败: {e}")
+            return query
+    
+    def rerank_results(self, query: str, results: List[Dict]) -> List[Dict]:
+        """使用Ollama重排序结果"""
+        if not results:
+            return results
+        
+        try:
+            # 简化重排序逻辑
+            return results
+        except Exception as e:
+            logger.error(f"Ollama重排序失败: {e}")
+            return results
+    
+    def generate_answer(self, query: str, context: str, scenario: str = None, style: str = None) -> str:
+        """使用Ollama生成答案"""
+        try:
+            prompt = f"""基于以下文档内容回答用户问题：
+
+文档内容：
+{context}
+
+用户问题：{query}
+
+请提供准确、简洁的回答："""
+
+            data = {
+                "model": self.model,
+                "messages": [
+                    {"role": "system", "content": "你是一个专业的文档分析助手。"},
+                    {"role": "user", "content": prompt}
+                ],
+                "stream": False
+            }
+            
+            response = self._make_request(data)
+            return response['message']['content'].strip()
+            
+        except Exception as e:
+            logger.error(f"Ollama答案生成失败: {e}")
+            return "抱歉，无法生成答案。"
+
 class LLMClientFactory:
     """LLM客户端工厂"""
     
@@ -425,6 +523,8 @@ class LLMClientFactory:
                 return OpenAIClient(model)
             elif provider == 'deepseek':
                 return DeepSeekClient(model)
+            elif provider == 'ollama':
+                return OllamaClient(model)
             else:
                 logger.warning(f"LLM提供商 {provider} 暂未完全实现，使用基础功能")
                 return None
@@ -582,4 +682,104 @@ class LLMService:
         if not client:
             return None
         
-        return client.generate_answer(query, context, scenario=scenario, style=style) 
+        return client.generate_answer(query, context, scenario=scenario, style=style)
+
+    @staticmethod
+    def analyze_document_structure(document_name: str, document_tags: List[Dict], 
+                                   document_tree: Dict, llm_model: str = None) -> Optional[Dict]:
+        """分析文档结构并提供改进建议"""
+        if not llm_model:
+            return None
+        
+        client = LLMClientFactory.create_client(llm_model)
+        if not client:
+            return None
+        
+        # 构建分析提示词
+        tags_info = ", ".join([tag['name'] for tag in document_tags]) if document_tags else "无标签"
+        
+        system_prompt = """你是一个专业的文档管理和项目组织专家。
+
+重要：你必须严格按照JSON格式回复，不要添加任何markdown标记或其他文本。
+
+请仔细分析文档结构，识别已有内容和缺失内容，直接返回以下JSON结构：
+{
+  "document_type": "具体的文档类型(如：项目文档、法律案件、合同文件、技术文档、财务文档等)",
+  "confidence": 0.0到1.0之间的数字,
+  "current_structure_analysis": "详细分析当前已有的文件和文件夹，明确指出哪些内容已经存在。格式：已有内容包含：1.xxx文件夹 2.xxx文档 3.xxx资料",
+  "missing_items": ["明确列出缺失的关键文件或文件夹，每项要具体说明缺失的内容"],
+  "suggestions": ["基于缺失项目的具体改进建议"],
+  "template_recommendation": "推荐的标准模板"
+}
+
+分析要求：
+1. 在current_structure_analysis中要明确说明哪些内容"已有"、"存在"、"包含"
+2. 在missing_items中要列出对应文档类型应该有但当前缺失的具体项目
+3. 确保已有内容和缺失内容的描述清晰、具体
+
+只返回JSON，不要添加任何解释或markdown格式。"""
+
+        user_prompt = f"""文档名称：{document_name}
+标签信息：{tags_info}
+目录结构：
+{json.dumps(document_tree, ensure_ascii=False, indent=2)}
+
+请直接返回JSON格式的分析结果："""
+
+        try:
+            # 使用客户端的generate_answer方法来生成分析
+            analysis_text = client.generate_answer(
+                query=user_prompt,
+                context="",
+                scenario="document_analysis"
+            )
+            
+            # 尝试解析JSON响应
+            try:
+                # 清理响应文本
+                cleaned_text = analysis_text.strip()
+                
+                # 处理markdown代码块
+                if '```json' in cleaned_text:
+                    json_start = cleaned_text.find('```json') + 7
+                    json_end = cleaned_text.find('```', json_start)
+                    if json_end != -1:
+                        cleaned_text = cleaned_text[json_start:json_end].strip()
+                elif '```' in cleaned_text:
+                    # 处理没有指定语言的代码块
+                    json_start = cleaned_text.find('```') + 3
+                    json_end = cleaned_text.find('```', json_start)
+                    if json_end != -1:
+                        cleaned_text = cleaned_text[json_start:json_end].strip()
+                
+                # 尝试找到JSON对象的开始和结束
+                if not cleaned_text.startswith('{'):
+                    brace_start = cleaned_text.find('{')
+                    if brace_start != -1:
+                        cleaned_text = cleaned_text[brace_start:]
+                
+                if not cleaned_text.endswith('}'):
+                    brace_end = cleaned_text.rfind('}')
+                    if brace_end != -1:
+                        cleaned_text = cleaned_text[:brace_end + 1]
+                
+                logger.info(f"尝试解析JSON: {cleaned_text[:200]}...")
+                analysis_result = json.loads(cleaned_text)
+                logger.info("JSON解析成功")
+                return analysis_result
+                
+            except json.JSONDecodeError as e:
+                logger.warning(f"JSON解析失败: {e}, 原始响应: {analysis_text[:200]}...")
+                # 如果JSON解析失败，返回原始文本分析
+                return {
+                    "document_type": "文档类型分析",
+                    "confidence": 0.7,
+                    "current_structure_analysis": "AI模型返回了详细的分析内容，但未采用标准JSON格式。",
+                    "missing_items": ["建议重新分析以获取结构化结果"],
+                    "suggestions": [analysis_text if len(analysis_text) < 1000 else analysis_text[:1000] + "..."],
+                    "template_recommendation": "标准文档管理模板"
+                }
+                
+        except Exception as e:
+            logger.error(f"文档结构分析失败: {e}")
+            return None 

@@ -1267,6 +1267,50 @@
             border-radius: 8px;
         }
 
+        /* 文档分析搜索结果样式 */
+        .search-results {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 0.375rem;
+            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .search-results .list-group-item {
+            border: none;
+            border-bottom: 1px solid #f8f9fa;
+            cursor: pointer;
+        }
+
+        .search-results .list-group-item:hover {
+            background-color: #f8f9fa;
+        }
+
+        .search-results .list-group-item:last-child {
+            border-bottom: none;
+        }
+
+        /* 分析结果样式 */
+        .analysis-result-card {
+            margin-bottom: 1rem;
+        }
+
+        .analysis-result-card .card-header {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .analysis-result-card .card-header h6 {
+            margin: 0;
+            color: #495057;
+        }
+
         /* 响应式设计 */
         @media (max-width: 768px) {
             .navbar-stats {
@@ -1743,6 +1787,181 @@
             font-size: 0.875em;
             color: #495057;
         }
+
+        /* 搜索建议样式 */
+        .search-suggestion-hint {
+            margin-top: 10px;
+            padding: 8px 12px;
+            background: #f8f9fa;
+            border-left: 3px solid #007bff;
+            border-radius: 3px;
+            font-size: 0.9em;
+        }
+
+        /* 文档分析结果样式 */
+        .analysis-result {
+            margin-bottom: 20px;
+        }
+
+        .analysis-header {
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #e9ecef;
+        }
+
+        .analysis-result .card {
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .analysis-result .card-header {
+            background-color: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+            font-weight: 600;
+        }
+
+        .analysis-result .progress {
+            height: 20px;
+        }
+
+        .analysis-result .badge {
+            font-size: 0.9em;
+            padding: 0.5em 0.8em;
+        }
+
+        .document-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .document-item {
+            padding: 12px 15px;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background-color: #fff;
+        }
+
+        .document-item:hover {
+            background-color: #f8f9fa;
+            border-color: #007bff;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(0,123,255,0.15);
+        }
+
+        .document-item .doc-name {
+            font-weight: 600;
+            color: #495057;
+            margin-left: 8px;
+        }
+
+        .document-item .doc-path {
+            display: block;
+            margin-left: 28px;
+            margin-top: 4px;
+            font-size: 0.85em;
+        }
+
+        /* 内容状态分析样式 */
+        .content-status-section {
+            margin-bottom: 15px;
+        }
+
+        .content-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .content-item {
+            display: flex;
+            align-items: center;
+            padding: 10px 15px;
+            margin-bottom: 8px;
+            border-radius: 6px;
+            transition: all 0.2s ease;
+            border-left: 4px solid transparent;
+        }
+
+        .content-item.existing {
+            background-color: #f8fff9;
+            border-left-color: #28a745;
+        }
+
+        .content-item.missing {
+            background-color: #fffbf8;
+            border-left-color: #ffc107;
+        }
+
+        .content-item .item-number {
+            font-weight: 600;
+            color: #495057;
+            margin-right: 10px;
+            min-width: 25px;
+        }
+
+        .content-item .item-text {
+            flex: 1;
+            color: #495057;
+            line-height: 1.4;
+        }
+
+        .content-item .status-badge {
+            margin-left: auto;
+            font-size: 0.8em;
+            font-weight: 600;
+        }
+
+        /* 优化建议列表样式 */
+        .suggestion-list {
+            padding-left: 0;
+            margin: 0;
+        }
+
+        .suggestion-item {
+            display: flex;
+            align-items: flex-start;
+            padding: 8px 0;
+            border-bottom: 1px solid #f8f9fa;
+        }
+
+        .suggestion-item:last-child {
+            border-bottom: none;
+        }
+
+        .suggestion-item i {
+            margin-right: 10px;
+            margin-top: 2px;
+            flex-shrink: 0;
+        }
+
+        /* 响应式调整 */
+        @media (max-width: 768px) {
+            .analysis-result .row {
+                margin: 0;
+            }
+            
+            .analysis-result .col-md-6 {
+                padding: 0;
+                margin-bottom: 10px;
+            }
+
+            .content-item {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 5px;
+            }
+
+            .content-item .status-badge {
+                margin-left: 0;
+                align-self: flex-end;
+            }
+        }
+
+        /* =============== 通用样式 =============== */
     </style>
 </head>
 <body>
@@ -2282,6 +2501,6 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="/js/integrated_app.js?v=2025061002"></script>
+    <script src="/js/integrated_app.js?v=2025061003"></script>
 </body>
 </html> 

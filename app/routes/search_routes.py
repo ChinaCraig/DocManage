@@ -45,6 +45,11 @@ def semantic_search():
                 'error': '查询文本不能为空'
             }), 400
         
+        # 检测文档分析意图
+        analysis_intent = detect_analysis_intent(query_text)
+        if analysis_intent['is_analysis']:
+            return handle_document_analysis(analysis_intent, llm_model)
+        
         # LLM步骤1：查询优化（使用智能提示词系统）
         original_query = query_text
         optimized_query = query_text
@@ -547,4 +552,281 @@ def aggregate_results_by_file(chunk_results):
         
     except Exception as e:
         logger.error(f"文件聚合失败: {str(e)}")
-        return [] 
+        return []
+
+def detect_analysis_intent(query_text):
+    """检测查询中是否包含文档分析意图"""
+    import re
+    
+    # 分析意图关键词 - 扩展更多模式
+    analysis_keywords = [
+        # 基本分析模式
+        r'分析.*?文档', r'分析.*?文件', r'分析.*?资料',
+        r'文档.*?分析', r'文件.*?分析', r'资料.*?分析',
+        r'分析.*?目录', r'目录.*?分析',
+        r'分析.*?文件夹', r'文件夹.*?分析',
+        
+        # 检查和评估类
+        r'检查.*?文档', r'检查.*?文件', r'检查.*?结构', r'检查.*?文件夹',
+        r'评估.*?文档', r'评估.*?文件', r'评估.*?结构', r'评估.*?文件夹',
+        
+        # 缺失分析类 - 新增
+        r'.*?缺少.*?内容', r'.*?缺失.*?内容', r'.*?还需要.*?',
+        r'.*?还缺.*?', r'.*?少.*?内容', r'.*?不足.*?',
+        
+        # 完整性检查类 - 新增  
+        r'.*?完整.*?检查', r'.*?完整.*?分析', r'.*?齐全.*?',
+        r'.*?内容.*?完整', r'.*?材料.*?齐全',
+        
+        # 直接分析模式 - 新增
+        r'^分析\s*[^\s]{1,30}$',  # 分析XXX（简短文档名）
+        r'^分析\s*.{1,50}$'       # 分析任意内容（中等长度）
+    ]
+    
+    query_lower = query_text.lower().strip()
+    
+    # 检查是否匹配分析意图
+    for pattern in analysis_keywords:
+        if re.search(pattern, query_lower):
+            # 尝试提取文档名称
+            doc_name = extract_document_name(query_text, pattern)
+            return {
+                'is_analysis': True,
+                'document_name': doc_name,
+                'original_query': query_text,
+                'matched_pattern': pattern
+            }
+    
+    return {'is_analysis': False}
+
+def extract_document_name(query_text, matched_pattern):
+    """从查询文本中提取文档名称"""
+    import re
+    
+    # 常见的文档名称提取模式 - 扩展更多模式
+    patterns = [
+        # 引用格式
+        r'分析["\']([^"\']+)["\']',  # 分析"文档名"
+        r'分析《([^》]+)》',         # 分析《文档名》
+        
+        # 基本分析格式
+        r'分析(?:文档|文件|资料|文件夹)?[：:]?\s*([^\s，。！？]+)',  # 分析文档：名称 或 分析 名称
+        r'([^\s，。！？]+)(?:文档|文件|资料|文件夹)?.*?分析',  # 名称文档分析
+        r'分析.*?([^\s，。！？]{2,20})(?:文档|文件|资料|目录|文件夹)',  # 分析XX文档
+        
+        # 缺失分析类 - 新增
+        r'([^，。！？\s]+).*?(?:缺少|缺失|还需要|还缺|少|不足).*?内容',  # XX缺少内容
+        r'.*?缺少.*?([^，。！？\s]+).*?内容',  # 缺少XX内容
+        
+        # 完整性检查类
+        r'([^，。！？\s]+).*?(?:完整|齐全)',  # XX完整
+        r'(?:完整|齐全).*?([^，。！？\s]+)',  # 完整XX
+        
+        # 通用模式 - 匹配文档ID或名称
+        r'分析\s*([0-9]+[^\s，。！？]*)',  # 分析01毕磊
+        r'分析\s*([^\s，。！？]{2,30})',    # 分析任意名称
+        
+        # 从文件夹描述中提取
+        r'([^，。！？\s]+)\s*(?:这个|那个|该|此)?\s*(?:文件夹|目录)',  # XX文件夹
+    ]
+    
+    # 按优先级尝试提取
+    for pattern in patterns:
+        match = re.search(pattern, query_text)
+        if match:
+            doc_name = match.group(1).strip()
+            
+            # 清理常见的停用词和无意义词汇
+            doc_name = re.sub(r'^(这个|那个|该|此|一下|下|的)\s*', '', doc_name)
+            doc_name = re.sub(r'\s*(的|吧|呢|啊|吗|文档|文件|资料|文件夹|目录)$', '', doc_name)
+            
+            # 确保提取的名称有意义（长度>=1，不全是标点符号）
+            if len(doc_name) >= 1 and re.search(r'[a-zA-Z0-9\u4e00-\u9fff]', doc_name):
+                return doc_name
+    
+    # 如果以上都没匹配，尝试简单的空格分割
+    words = query_text.split()
+    if len(words) >= 2 and words[0] in ['分析', '检查', '评估']:
+        # 从第二个词开始组合可能的文档名
+        for i in range(1, len(words)):
+            candidate = ''.join(words[1:i+1])
+            if re.search(r'[a-zA-Z0-9\u4e00-\u9fff]', candidate) and len(candidate) >= 1:
+                return candidate
+    
+    return None
+
+def handle_document_analysis(analysis_intent, llm_model):
+    """处理文档分析请求"""
+    try:
+        doc_name = analysis_intent.get('document_name')
+        original_query = analysis_intent.get('original_query')
+        
+        if not doc_name:
+            return jsonify({
+                'success': True,
+                'data': {
+                    'query': original_query,
+                    'is_analysis': True,
+                    'analysis_result': {
+                        'type': 'error',
+                        'message': '未能从查询中识别出具体的文档名称。请明确指定要分析的文档，例如："分析项目文档"或"分析《合同管理》文件"。'
+                    }
+                }
+            })
+        
+        # 搜索匹配的文档
+        documents = DocumentNode.query.filter(
+            DocumentNode.name.contains(doc_name),
+            DocumentNode.is_deleted == False
+        ).limit(10).all()
+        
+        if not documents:
+            return jsonify({
+                'success': True,
+                'data': {
+                    'query': original_query,
+                    'is_analysis': True,
+                    'analysis_result': {
+                        'type': 'not_found',
+                        'message': f'未找到名称包含"{doc_name}"的文档。请检查文档名称是否正确，或者使用文档搜索功能查看可用的文档列表。',
+                        'searched_name': doc_name
+                    }
+                }
+            })
+        
+        # 如果找到多个文档，让用户选择
+        if len(documents) > 1:
+            doc_list = []
+            for doc in documents:
+                doc_data = doc.to_dict()
+                # 添加路径信息
+                path_parts = []
+                current = doc
+                while current.parent_id:
+                    parent = DocumentNode.query.get(current.parent_id)
+                    if parent and not parent.is_deleted:
+                        path_parts.append(parent.name)
+                        current = parent
+                    else:
+                        break
+                doc_data['path'] = ' > '.join(reversed(path_parts)) if path_parts else '根目录'
+                doc_list.append(doc_data)
+            
+            return jsonify({
+                'success': True,
+                'data': {
+                    'query': original_query,
+                    'is_analysis': True,
+                    'analysis_result': {
+                        'type': 'multiple_found',
+                        'message': f'找到{len(documents)}个包含"{doc_name}"的文档，请明确指定要分析的文档：',
+                        'documents': doc_list,
+                        'searched_name': doc_name
+                    }
+                }
+            })
+        
+        # 找到唯一文档，执行分析
+        document = documents[0]
+        
+        if not llm_model:
+            return jsonify({
+                'success': True,
+                'data': {
+                    'query': original_query,
+                    'is_analysis': True,
+                    'analysis_result': {
+                        'type': 'no_model',
+                        'message': '文档分析需要选择AI模型。请在设置中选择一个可用的AI模型后重试。',
+                        'document': document.to_dict()
+                    }
+                }
+            })
+        
+        # 执行文档分析
+        try:
+            # 获取文档标签信息
+            document_tags = [tag.to_dict() for tag in document.tags]
+            
+            # 构建文档树结构
+            def build_document_tree(node):
+                result = {
+                    'id': node.id,
+                    'name': node.name,
+                    'type': node.type,
+                    'file_type': node.file_type,
+                    'description': node.description,
+                    'children': []
+                }
+                
+                children = DocumentNode.query.filter_by(
+                    parent_id=node.id,
+                    is_deleted=False
+                ).order_by(DocumentNode.type.desc(), DocumentNode.name).all()
+                
+                for child in children:
+                    result['children'].append(build_document_tree(child))
+                
+                return result
+            
+            document_tree = build_document_tree(document)
+            
+            # 调用LLM分析服务
+            analysis_result = LLMService.analyze_document_structure(
+                document_name=document.name,
+                document_tags=document_tags,
+                document_tree=document_tree,
+                llm_model=llm_model
+            )
+            
+            if not analysis_result:
+                return jsonify({
+                    'success': True,
+                    'data': {
+                        'query': original_query,
+                        'is_analysis': True,
+                        'analysis_result': {
+                            'type': 'analysis_failed',
+                            'message': 'AI模型分析失败，请稍后重试或尝试其他AI模型。',
+                            'document': document.to_dict()
+                        }
+                    }
+                })
+            
+            # 返回分析结果
+            return jsonify({
+                'success': True,
+                'data': {
+                    'query': original_query,
+                    'is_analysis': True,
+                    'analysis_result': {
+                        'type': 'success',
+                        'message': f'已完成对文档《{document.name}》的智能分析：',
+                        'document': document.to_dict(),
+                        'analysis': analysis_result,
+                        'llm_model': llm_model
+                    }
+                }
+            })
+            
+        except Exception as e:
+            logger.error(f"文档分析执行失败: {e}")
+            return jsonify({
+                'success': True,
+                'data': {
+                    'query': original_query,
+                    'is_analysis': True,
+                    'analysis_result': {
+                        'type': 'error',
+                        'message': f'文档分析过程中发生错误：{str(e)}',
+                        'document': document.to_dict()
+                    }
+                }
+            })
+            
+    except Exception as e:
+        logger.error(f"处理文档分析请求失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': f'处理文档分析请求失败: {str(e)}'
+        }), 500 
