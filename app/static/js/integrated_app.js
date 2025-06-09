@@ -4289,7 +4289,7 @@ async function initMCPFeatures() {
         
         // 首先设置默认状态
         enableMCPCheckbox.disabled = false;
-        enableMCPCheckbox.checked = false;
+        enableMCPCheckbox.checked = true;
         enableMCPCheckbox.title = '正在检查MCP功能状态...';
         
         try {
@@ -4306,7 +4306,7 @@ async function initMCPFeatures() {
                 const mcpConfig = result.data;
                 
                 // 根据配置设置状态
-                enableMCPCheckbox.checked = false; // 默认不选中
+                enableMCPCheckbox.checked = true; // 默认选中
                 
                 // 开关始终可以操作，但根据配置给出不同的提示
                 enableMCPCheckbox.disabled = false;
@@ -4326,7 +4326,7 @@ async function initMCPFeatures() {
             console.warn('MCP配置检查失败，设置为默认状态:', configError);
             // 设置为默认可用状态
             enableMCPCheckbox.disabled = false;
-            enableMCPCheckbox.checked = false;
+            enableMCPCheckbox.checked = true;
             enableMCPCheckbox.title = 'MCP工具功能 (配置检查失败，但可以尝试使用)';
             enableMCPCheckbox.setAttribute('data-server-disabled', 'false');
         }
@@ -4359,7 +4359,7 @@ async function initMCPFeatures() {
         const enableMCPCheckbox = document.getElementById('enableMCP');
         if (enableMCPCheckbox) {
             enableMCPCheckbox.disabled = false;
-            enableMCPCheckbox.checked = false;
+            enableMCPCheckbox.checked = true;
             enableMCPCheckbox.title = 'MCP工具功能 (初始化失败，但可以尝试使用)';
             enableMCPCheckbox.setAttribute('data-server-disabled', 'false');
         }
@@ -4579,3 +4579,416 @@ async function saveTextContent(docId) {
         saveBtn.innerHTML = '<i class="bi bi-check-lg me-1"></i>保存';
     }
 }
+
+// ============ 批量向量化功能 ============
+
+// 批量向量化相关全局变量
+let batchVectorizationData = null;
+let batchProgressInterval = null;
+
+function showBatchVectorizeModal() {
+    // 显示模态框
+    const modal = new bootstrap.Modal(document.getElementById('batchVectorizeModal'));
+    modal.show();
+    
+    // 首先检查是否有正在进行的任务
+    checkActiveVectorizationTask();
+}
+
+async function checkActiveVectorizationTask() {
+    try {
+        const response = await fetch('/api/vectorize/batch/progress');
+        const result = await response.json();
+        
+        if (result.success && result.data.processing_count > 0) {
+            // 有正在进行的任务，恢复任务状态
+            showInfo('检测到正在进行的向量化任务，正在恢复状态...');
+            
+            // 禁用配置输入框
+            const chunkSizeInput = document.getElementById('batchChunkSize');
+            const chunkOverlapInput = document.getElementById('batchChunkOverlap');
+            const startBtn = document.getElementById('batchVectorizeBtn');
+            const cancelBtn = document.getElementById('batchCancelBtn');
+            const progressDiv = document.getElementById('batchProgress');
+            
+            chunkSizeInput.disabled = true;
+            chunkOverlapInput.disabled = true;
+            startBtn.disabled = true;
+            startBtn.innerHTML = '<i class="bi bi-check-circle"></i> 任务进行中';
+            cancelBtn.textContent = '关闭';
+            progressDiv.style.display = 'block';
+            
+            // 开始监控进度
+            const totalDocs = result.data.processing_count + result.data.completed_count + result.data.failed_count;
+            startProgressMonitoring(totalDocs);
+        } else {
+            // 没有正在进行的任务，正常加载统计信息
+            loadBatchVectorizeStats();
+        }
+    } catch (error) {
+        console.error('检查活跃任务失败:', error);
+        // 出错时也正常加载统计信息
+        loadBatchVectorizeStats();
+    }
+}
+
+async function loadBatchVectorizeStats() {
+    try {
+        // 显示加载状态
+        document.getElementById('totalDocsCount').textContent = '-';
+        document.getElementById('vectorizedDocsCount').textContent = '-';
+        document.getElementById('pendingDocsCount').textContent = '-';
+        document.getElementById('pendingDocsList').innerHTML = `
+            <div class="text-center text-muted">
+                <div class="spinner-border" role="status">
+                    <span class="visually-hidden">加载中...</span>
+                </div>
+                <p class="mt-2">正在加载文档列表...</p>
+            </div>
+        `;
+        
+        // 构建API请求URL，如果有选中节点则传递节点ID
+        let apiUrl = '/api/vectorize/batch/stats';
+        if (selectedNode && selectedNode.id) {
+            apiUrl += `?node_id=${selectedNode.id}`;
+        }
+        
+        const response = await fetch(apiUrl);
+        const result = await response.json();
+        
+        if (result.success) {
+            batchVectorizationData = result.data;
+            
+            // 更新统计信息
+            document.getElementById('totalDocsCount').textContent = result.data.supported_files;
+            document.getElementById('vectorizedDocsCount').textContent = result.data.vectorized_count;
+            document.getElementById('pendingDocsCount').textContent = result.data.not_vectorized_count;
+            
+            // 显示待向量化文档列表
+            displayPendingDocuments(result.data.not_vectorized_docs);
+            
+        } else {
+            throw new Error(result.error || '获取统计信息失败');
+        }
+        
+    } catch (error) {
+        console.error('加载批量向量化统计信息失败:', error);
+        showError('加载统计信息失败: ' + error.message);
+        
+        document.getElementById('pendingDocsList').innerHTML = `
+            <div class="text-center text-danger">
+                <i class="bi bi-exclamation-triangle"></i>
+                <p>加载失败: ${error.message}</p>
+            </div>
+        `;
+    }
+}
+
+function displayPendingDocuments(docs) {
+    const container = document.getElementById('pendingDocsList');
+    
+    if (!docs || docs.length === 0) {
+        container.innerHTML = `
+            <div class="text-center text-success">
+                <i class="bi bi-check-circle" style="font-size: 2rem;"></i>
+                <h5 class="mt-2">所有文档都已向量化</h5>
+                <p class="text-muted">没有待向量化的文档</p>
+            </div>
+        `;
+        
+        // 禁用开始按钮
+        const startBtn = document.getElementById('batchVectorizeBtn');
+        if (startBtn) {
+            startBtn.disabled = true;
+            startBtn.innerHTML = '<i class="bi bi-check-circle"></i> 已全部完成';
+        }
+        
+        return;
+    }
+    
+    let html = '';
+    docs.forEach((doc, index) => {
+        const fileIcon = getFileIcon(doc.file_type);
+        const fileSize = formatFileSize(doc.file_size || 0);
+        const createTime = formatDateTime(doc.created_at);
+        
+        html += `
+            <div class="list-group-item d-flex justify-content-between align-items-center">
+                <div class="d-flex align-items-center">
+                    <i class="bi ${fileIcon} me-2"></i>
+                    <div>
+                        <h6 class="mb-1">${escapeHtml(doc.name)}</h6>
+                        <small class="text-muted">${doc.file_type} • ${fileSize} • ${createTime}</small>
+                    </div>
+                </div>
+                <span class="badge bg-warning">待处理</span>
+            </div>
+        `;
+    });
+    
+    container.innerHTML = html;
+    
+    // 启用开始按钮
+    const startBtn = document.getElementById('batchVectorizeBtn');
+    if (startBtn) {
+        startBtn.disabled = false;
+        startBtn.innerHTML = '<i class="bi bi-lightning-charge"></i> 开始批量向量化';
+    }
+}
+
+async function startBatchVectorization() {
+    const chunkSize = parseInt(document.getElementById('batchChunkSize').value);
+    const overlap = parseInt(document.getElementById('batchChunkOverlap').value);
+    
+    // 验证输入
+    if (isNaN(chunkSize) || chunkSize < 100 || chunkSize > 5000) {
+        showError('分段字符长度必须在100-5000之间');
+        return;
+    }
+    
+    if (isNaN(overlap) || overlap < 0 || overlap > 500) {
+        showError('重叠字符数必须在0-500之间');
+        return;
+    }
+    
+    if (!batchVectorizationData || batchVectorizationData.not_vectorized_count === 0) {
+        showError('没有待向量化的文档');
+        return;
+    }
+    
+    try {
+        // 显示确认对话框
+        const confirmResult = await showConfirmModal(
+            `确定要开始批量向量化 ${batchVectorizationData.not_vectorized_count} 个文档吗？\n\n配置参数：\n• 分段字符长度：${chunkSize}\n• 重叠字符数：${overlap}\n\n注意：这个过程可能需要较长时间，请耐心等待。`,
+            '确认批量向量化',
+            '开始向量化',
+            'btn-warning'
+        );
+        
+        if (!confirmResult) {
+            return;
+        }
+        
+        // 开始向量化
+        await executeBatchVectorization(chunkSize, overlap);
+        
+    } catch (error) {
+        console.error('批量向量化失败:', error);
+        showError('批量向量化失败: ' + error.message);
+    }
+}
+
+async function executeBatchVectorization(chunkSize, overlap) {
+    try {
+        // 禁用开始按钮，显示进度，禁用输入框
+        const startBtn = document.getElementById('batchVectorizeBtn');
+        const cancelBtn = document.getElementById('batchCancelBtn');
+        const progressDiv = document.getElementById('batchProgress');
+        const chunkSizeInput = document.getElementById('batchChunkSize');
+        const chunkOverlapInput = document.getElementById('batchChunkOverlap');
+        
+        startBtn.disabled = true;
+        startBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> 正在启动...';
+        progressDiv.style.display = 'block';
+        
+        // 禁用配置输入框
+        chunkSizeInput.disabled = true;
+        chunkOverlapInput.disabled = true;
+        
+        // 构建请求数据
+        const requestData = {
+            chunk_size: chunkSize,
+            overlap: overlap
+        };
+        
+        // 如果有选中节点，传递节点ID
+        if (selectedNode && selectedNode.id) {
+            requestData.node_id = selectedNode.id;
+        }
+        
+        // 发送批量向量化请求
+        const response = await fetch('/api/vectorize/batch/execute', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestData)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showSuccess('批量向量化任务已启动');
+            
+            // 更新按钮状态
+            startBtn.innerHTML = '<i class="bi bi-check-circle"></i> 任务已启动';
+            cancelBtn.textContent = '关闭';
+            
+            // 开始监控进度
+            startProgressMonitoring(result.data.total_docs);
+            
+        } else {
+            throw new Error(result.error || '启动批量向量化失败');
+        }
+        
+    } catch (error) {
+        console.error('执行批量向量化失败:', error);
+        showError('启动批量向量化失败: ' + error.message);
+        
+        // 恢复按钮状态
+        const startBtn = document.getElementById('batchVectorizeBtn');
+        const progressDiv = document.getElementById('batchProgress');
+        
+        startBtn.disabled = false;
+        startBtn.innerHTML = '<i class="bi bi-lightning-charge"></i> 开始批量向量化';
+        progressDiv.style.display = 'none';
+    }
+}
+
+function startProgressMonitoring(totalDocs) {
+    let processedDocs = 0;
+    
+    // 清除之前的定时器
+    if (batchProgressInterval) {
+        clearInterval(batchProgressInterval);
+    }
+    
+    // 开始监控进度
+    batchProgressInterval = setInterval(async () => {
+        try {
+            const response = await fetch('/api/vectorize/batch/progress');
+            const result = await response.json();
+            
+            if (result.success) {
+                const data = result.data;
+                const completed = data.completed_count;
+                const processing = data.processing_count;
+                const failed = data.failed_count;
+                
+                // 计算已处理的文档数（完成 + 失败）
+                processedDocs = completed + failed;
+                const remaining = processing;  // 剩余的就是正在处理的文档数
+                const progress = totalDocs > 0 ? (processedDocs / totalDocs) * 100 : 0;
+                
+                // 更新进度条
+                const progressBar = document.getElementById('progressBar');
+                const progressText = document.getElementById('progressText');
+                const remainingText = document.getElementById('remainingText');
+                const currentProcessing = document.getElementById('currentProcessing');
+                const currentDocName = document.getElementById('currentDocName');
+                
+                if (progressBar) {
+                    progressBar.style.width = `${progress}%`;
+                    progressBar.textContent = `${Math.round(progress)}%`;
+                }
+                
+                if (progressText) {
+                    progressText.textContent = `${processedDocs} / ${totalDocs}`;
+                }
+                
+                if (remainingText) {
+                    remainingText.textContent = `${remaining}`;
+                }
+                
+                // 显示当前正在处理的文档
+                if (data.processing_docs && data.processing_docs.length > 0) {
+                    const currentDoc = data.processing_docs[0];
+                    if (currentDocName) {
+                        currentDocName.textContent = currentDoc.name;
+                    }
+                    if (currentProcessing) {
+                        currentProcessing.style.display = 'block';
+                    }
+                } else {
+                    if (currentProcessing) {
+                        currentProcessing.style.display = 'none';
+                    }
+                }
+                
+                // 动态更新待向量化文档列表
+                updatePendingDocsList(data.processing_docs);
+                
+                // 如果所有文档都处理完成
+                if (processing === 0 && remaining === 0) {
+                    clearInterval(batchProgressInterval);
+                    batchProgressInterval = null;
+                    
+                    // 更新界面
+                    const successCount = completed;
+                    const failedCount = failed;
+                    
+                    if (failedCount === 0) {
+                        showSuccess(`批量向量化完成！成功处理 ${successCount} 个文档`);
+                    } else {
+                        showWarning(`批量向量化完成！成功 ${successCount} 个，失败 ${failedCount} 个`);
+                    }
+                    
+                    // 重新启用配置输入框
+                    const chunkSizeInput = document.getElementById('batchChunkSize');
+                    const chunkOverlapInput = document.getElementById('batchChunkOverlap');
+                    chunkSizeInput.disabled = false;
+                    chunkOverlapInput.disabled = false;
+                    
+                    // 刷新统计信息
+                    setTimeout(() => {
+                        loadBatchVectorizeStats();
+                        loadFileTree(); // 刷新文档树
+                        loadStats(); // 刷新顶部统计
+                    }, 1000);
+                }
+                
+            } else {
+                console.error('获取进度失败:', result.error);
+            }
+            
+        } catch (error) {
+            console.error('监控进度失败:', error);
+        }
+    }, 2000); // 每2秒检查一次进度
+}
+
+function updatePendingDocsList(processingDocs) {
+    const container = document.getElementById('pendingDocsList');
+    
+    if (!processingDocs || processingDocs.length === 0) {
+        container.innerHTML = `
+            <div class="text-center text-success">
+                <i class="bi bi-check-circle" style="font-size: 2rem;"></i>
+                <h5 class="mt-2">所有文档已处理完成</h5>
+                <p class="text-muted">没有待向量化的文档</p>
+            </div>
+        `;
+        return;
+    }
+    
+    let html = '';
+    processingDocs.forEach((doc, index) => {
+        const fileIcon = getFileIcon(doc.file_type);
+        
+        html += `
+            <div class="list-group-item d-flex justify-content-between align-items-center">
+                <div class="d-flex align-items-center">
+                    <i class="bi ${fileIcon} me-2"></i>
+                    <div>
+                        <h6 class="mb-1">${escapeHtml(doc.name)}</h6>
+                        <small class="text-muted">${doc.file_type}</small>
+                    </div>
+                </div>
+                <span class="badge bg-info">处理中</span>
+            </div>
+        `;
+    });
+    
+    container.innerHTML = html;
+}
+
+// 当模态框关闭时清理定时器
+document.addEventListener('hidden.bs.modal', function (event) {
+    if (event.target.id === 'batchVectorizeModal') {
+        if (batchProgressInterval) {
+            clearInterval(batchProgressInterval);
+            batchProgressInterval = null;
+        }
+    }
+});
+

@@ -448,4 +448,343 @@ def get_supported_file_types():
         return jsonify({
             'success': False,
             'error': str(e)
-        }), 500 
+        }), 500
+
+@vectorize_bp.route('/batch/stats', methods=['GET'])
+def get_batch_vectorization_stats():
+    """获取批量向量化统计信息"""
+    try:
+        # 获取节点ID参数，如果有则只查询该节点及其子节点下的文档
+        node_id = request.args.get('node_id', type=int)
+        
+        if node_id:
+            # 获取指定节点及其所有子节点的文档
+            target_node = DocumentNode.query.get(node_id)
+            if not target_node:
+                return jsonify({
+                    'success': False,
+                    'error': '指定的节点不存在'
+                }), 404
+            
+            # 递归获取所有子节点ID
+            def get_all_child_ids(node):
+                ids = []
+                if node.type == 'file':
+                    ids.append(node.id)
+                else:
+                    # 文件夹节点，获取其所有子节点
+                    for child in node.children:
+                        if not child.is_deleted:
+                            ids.extend(get_all_child_ids(child))
+                return ids
+            
+            file_ids = get_all_child_ids(target_node)
+            if file_ids:
+                all_files = DocumentNode.query.filter(
+                    DocumentNode.id.in_(file_ids),
+                    DocumentNode.type == 'file',
+                    DocumentNode.is_deleted == False
+                ).all()
+            else:
+                all_files = []
+        else:
+            # 获取所有文件类型的文档
+            all_files = DocumentNode.query.filter_by(type='file', is_deleted=False).all()
+        
+        # 过滤支持向量化的文件
+        supported_files = []
+        for doc in all_files:
+            if doc.file_path and vectorization_factory.is_supported_file(doc.file_path):
+                supported_files.append(doc)
+        
+        # 统计向量化状态
+        vectorized_count = sum(1 for doc in supported_files if doc.is_vectorized)
+        not_vectorized_count = len(supported_files) - vectorized_count
+        
+        # 获取未向量化文档列表
+        not_vectorized_docs = []
+        for doc in supported_files:
+            if not doc.is_vectorized:
+                not_vectorized_docs.append({
+                    'id': doc.id,
+                    'name': doc.name,
+                    'file_type': vectorization_factory.get_file_type(doc.file_path),
+                    'file_size': doc.file_size,
+                    'created_at': doc.created_at.isoformat() if doc.created_at else None
+                })
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'total_files': len(all_files),
+                'supported_files': len(supported_files),
+                'vectorized_count': vectorized_count,
+                'not_vectorized_count': not_vectorized_count,
+                'not_vectorized_docs': not_vectorized_docs,
+                'supported_types': vectorization_factory.get_all_supported_extensions()
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"获取批量向量化统计信息失败: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@vectorize_bp.route('/batch/execute', methods=['POST'])
+def execute_batch_vectorization():
+    """执行批量向量化"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({
+                'success': False,
+                'error': '缺少请求数据'
+            }), 400
+        
+        chunk_size = data.get('chunk_size', 1000)
+        overlap = data.get('overlap', 200)
+        doc_ids = data.get('doc_ids', [])
+        node_id = data.get('node_id')
+        
+        # 验证参数
+        if chunk_size < 100 or chunk_size > 5000:
+            return jsonify({
+                'success': False,
+                'error': '分段字符长度必须在100-5000之间'
+            }), 400
+            
+        if overlap < 0 or overlap > 500:
+            return jsonify({
+                'success': False,
+                'error': '重叠字符数必须在0-500之间'
+            }), 400
+        
+        # 如果没有指定文档ID，则获取未向量化的文档
+        if not doc_ids:
+            if node_id:
+                # 获取指定节点及其所有子节点的未向量化文档
+                target_node = DocumentNode.query.get(node_id)
+                if not target_node:
+                    return jsonify({
+                        'success': False,
+                        'error': '指定的节点不存在'
+                    }), 400
+                
+                # 递归获取所有子节点ID
+                def get_all_child_ids(node):
+                    ids = []
+                    if node.type == 'file':
+                        ids.append(node.id)
+                    else:
+                        # 文件夹节点，获取其所有子节点
+                        for child in node.children:
+                            if not child.is_deleted:
+                                ids.extend(get_all_child_ids(child))
+                    return ids
+                
+                file_ids = get_all_child_ids(target_node)
+                if file_ids:
+                    all_docs = DocumentNode.query.filter(
+                        DocumentNode.id.in_(file_ids),
+                        DocumentNode.type == 'file',
+                        DocumentNode.is_deleted == False,
+                        DocumentNode.is_vectorized == False
+                    ).all()
+                else:
+                    all_docs = []
+            else:
+                # 获取所有未向量化的文档
+                all_docs = DocumentNode.query.filter_by(
+                    type='file', 
+                    is_deleted=False, 
+                    is_vectorized=False
+                ).all()
+            
+            # 过滤支持向量化的文件
+            doc_ids = []
+            for doc in all_docs:
+                if doc.file_path and vectorization_factory.is_supported_file(doc.file_path):
+                    doc_ids.append(doc.id)
+        
+        if not doc_ids:
+            return jsonify({
+                'success': False,
+                'error': '没有找到需要向量化的文档'
+            }), 400
+        
+        # 更新文档状态为处理中
+        for doc_id in doc_ids:
+            document = DocumentNode.query.get(doc_id)
+            if document:
+                document.vector_status = 'processing'
+        db.session.commit()
+        
+        # 启动后台任务进行批量向量化
+        from threading import Thread
+        from flask import current_app
+        app = current_app._get_current_object()  # 获取真实的app对象
+        thread = Thread(target=process_batch_vectorization, args=(app, doc_ids, chunk_size, overlap))
+        thread.daemon = True
+        thread.start()
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'total_docs': len(doc_ids),
+                'chunk_size': chunk_size,
+                'overlap': overlap,
+                'message': '批量向量化任务已启动，请等待处理完成'
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"启动批量向量化失败: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@vectorize_bp.route('/batch/progress', methods=['GET'])
+def get_batch_progress():
+    """获取批量向量化进度"""
+    try:
+        # 获取正在处理的文档
+        processing_docs = DocumentNode.query.filter_by(
+            type='file',
+            is_deleted=False,
+            vector_status='processing'
+        ).all()
+        
+        # 获取已完成和失败的文档
+        completed_docs = DocumentNode.query.filter_by(
+            type='file',
+            is_deleted=False,
+            is_vectorized=True
+        ).count()
+        
+        failed_docs = DocumentNode.query.filter_by(
+            type='file',
+            is_deleted=False,
+            vector_status='failed'
+        ).all()
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'processing_count': len(processing_docs),
+                'completed_count': completed_docs,
+                'failed_count': len(failed_docs),
+                'processing_docs': [
+                    {
+                        'id': doc.id,
+                        'name': doc.name,
+                        'file_type': vectorization_factory.get_file_type(doc.file_path) if doc.file_path else 'unknown'
+                    }
+                    for doc in processing_docs
+                ],
+                'failed_docs': [
+                    {
+                        'id': doc.id,
+                        'name': doc.name,
+                        'file_type': vectorization_factory.get_file_type(doc.file_path) if doc.file_path else 'unknown'
+                    }
+                    for doc in failed_docs
+                ]
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"获取批量向量化进度失败: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+def process_batch_vectorization(app, doc_ids, chunk_size, overlap):
+    """后台处理批量向量化"""
+    with app.app_context():
+        for doc_id in doc_ids:
+            try:
+                document = DocumentNode.query.get(doc_id)
+                if not document or document.is_vectorized:
+                    continue
+                
+                logger.info(f"开始向量化文档: {document.name}")
+                
+                # 获取向量化器
+                vectorizer = vectorization_factory.get_vectorizer(document.file_path)
+                if not vectorizer:
+                    logger.error(f"无法获取向量化器: {document.name}")
+                    document.vector_status = 'failed'
+                    db.session.commit()
+                    continue
+                
+                # 初始化向量服务
+                vectorizer.initialize_vector_service()
+                
+                # 提取文档内容
+                extract_result = vectorizer.extract_text(document.file_path)
+                if not extract_result['success']:
+                    logger.error(f"提取文档内容失败: {document.name}")
+                    document.vector_status = 'failed'
+                    db.session.commit()
+                    continue
+                
+                # 分段处理
+                chunks = vectorizer.chunk_text(
+                    extract_result['text'],
+                    chunk_size=chunk_size,
+                    overlap=overlap
+                )
+                
+                if not chunks:
+                    logger.error(f"文档分段失败: {document.name}")
+                    document.vector_status = 'failed'
+                    db.session.commit()
+                    continue
+                
+                # 上传文件到MinIO
+                if minio_service.is_available:
+                    filename = document.name
+                    timestamp = datetime.now().strftime('%Y/%m/%d')
+                    unique_id = str(uuid.uuid4())
+                    file_type = vectorization_factory.get_file_type(document.file_path)
+                    object_name = f"documents/{file_type}/{timestamp}/{unique_id}_{filename}"
+                    
+                    minio_result = minio_service.upload_file(document.file_path, object_name)
+                    if minio_result['success']:
+                        document.minio_path = object_name
+                
+                # 生成向量数据
+                if document.description and document.description.strip():
+                    enhanced_chunks = []
+                    for chunk in chunks:
+                        enhanced_chunk = f"文档描述: {document.description.strip()}\n\n内容: {chunk}"
+                        enhanced_chunks.append(enhanced_chunk)
+                    vectors_data = vectorizer.generate_vectors_data(str(doc_id), chunks, enhanced_chunks)
+                else:
+                    vectors_data = vectorizer.generate_vectors_data(str(doc_id), chunks)
+                
+                # 插入向量数据
+                if vectors_data and vectorizer.insert_vectors(vectors_data):
+                    document.is_vectorized = True
+                    document.vector_status = 'completed'
+                    document.vectorized_at = datetime.now()
+                    logger.info(f"文档向量化完成: {document.name}")
+                else:
+                    document.vector_status = 'failed'
+                    logger.error(f"向量数据插入失败: {document.name}")
+                
+                db.session.commit()
+                
+            except Exception as e:
+                logger.error(f"处理文档向量化失败 {doc_id}: {str(e)}")
+                try:
+                    document = DocumentNode.query.get(doc_id)
+                    if document:
+                        document.vector_status = 'failed'
+                        db.session.commit()
+                except:
+                    pass 
