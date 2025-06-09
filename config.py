@@ -115,6 +115,61 @@ class Config:
     LLM_TIMEOUT = int(os.environ.get('LLM_TIMEOUT') or 30)
     LLM_MAX_CONTEXT_LENGTH = int(os.environ.get('LLM_MAX_CONTEXT_LENGTH') or 4000)
     LLM_RERANK_BATCH_SIZE = int(os.environ.get('LLM_RERANK_BATCH_SIZE') or 20)
+    LLM_MAX_TOKENS = int(os.environ.get('LLM_MAX_TOKENS') or 500)
+    LLM_TEMPERATURE = float(os.environ.get('LLM_TEMPERATURE') or 0.7)
+    
+    # 应用服务配置
+    APP_HOST = os.environ.get('APP_HOST') or '0.0.0.0'
+    APP_PORT = int(os.environ.get('APP_PORT') or 5001)
+    
+    # MCP配置
+    MCP_CONFIG = {
+        'enabled': os.environ.get('MCP_ENABLED', 'true').lower() == 'true',
+        'timeout': int(os.environ.get('MCP_TIMEOUT') or 30),  # 工具调用超时时间（秒）
+        'max_concurrent_tools': int(os.environ.get('MCP_MAX_CONCURRENT_TOOLS') or 3),  # 最大并发工具数
+        'app_url': os.environ.get('MCP_APP_URL') or f'http://localhost:{int(os.environ.get("APP_PORT") or 5001)}',
+        'playwright': {
+            'element_timeout': int(os.environ.get('MCP_ELEMENT_TIMEOUT') or 5000),  # 元素等待超时（毫秒）
+            'modal_timeout': int(os.environ.get('MCP_MODAL_TIMEOUT') or 10000),  # 模态框等待超时（毫秒）
+            'wait_timeout': int(os.environ.get('MCP_WAIT_TIMEOUT') or 500),  # 一般等待时间（毫秒）
+        },
+        'servers': {
+            'playwright': {
+                'name': 'Playwright Web自动化',
+                'description': '自动化Web浏览器操作，可以点击按钮、填写表单、导航页面等',
+                'enabled': os.environ.get('MCP_PLAYWRIGHT_ENABLED', 'true').lower() == 'true',
+                'capabilities': [
+                    'navigate',      # 页面导航
+                    'click',         # 点击元素
+                    'fill',          # 填写表单
+                    'screenshot',    # 截图
+                    'wait',          # 等待元素
+                    'scroll',        # 页面滚动
+                    'evaluate'       # 执行JavaScript
+                ]
+            },
+            # 预留扩展空间
+            'search': {
+                'name': '网络搜索',
+                'description': '执行网络搜索，获取实时信息',
+                'enabled': os.environ.get('MCP_SEARCH_ENABLED', 'false').lower() == 'true',
+                'capabilities': [
+                    'web_search',
+                    'content_extract'
+                ]
+            },
+            'file_system': {
+                'name': '文件系统操作',
+                'description': '本地文件系统读写操作',
+                'enabled': os.environ.get('MCP_FILESYSTEM_ENABLED', 'false').lower() == 'true',
+                'capabilities': [
+                    'read_file',
+                    'write_file',
+                    'list_directory'
+                ]
+            }
+        }
+    }
     
     # 日志配置
     LOG_LEVEL = os.environ.get('LOG_LEVEL') or 'INFO'

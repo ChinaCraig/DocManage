@@ -688,20 +688,22 @@
         .similarity-settings {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 15px;
             flex-wrap: wrap;
         }
 
         .similarity-settings select {
             border: 1px solid #ced4da;
             border-radius: 4px;
-            padding: 2px 8px;
+            padding: 4px 8px;
             transition: all 0.2s ease;
+            background-color: #fff;
         }
 
         .similarity-settings select:focus {
             border-color: #17a2b8;
             box-shadow: 0 0 0 0.2rem rgba(23, 162, 184, 0.25);
+            outline: none;
         }
         
         .similarity-settings select:disabled {
@@ -712,6 +714,32 @@
         
         .similarity-settings .text-muted {
             white-space: nowrap;
+            font-size: 12px !important;
+            font-weight: 500;
+        }
+
+        /* MCP开关样式 */
+        .similarity-settings .form-check-input {
+            width: 2.5em;
+            height: 1.25em;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .similarity-settings .form-check-input:focus {
+            box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+        }
+
+        .similarity-settings .form-check-input:hover {
+            transform: scale(1.05);
+        }
+
+        .similarity-settings .form-check-input[data-server-disabled="true"] {
+            opacity: 0.7;
+        }
+
+        .similarity-settings .form-check-input[data-server-disabled="true"]:hover {
+            transform: scale(1.02);
         }
         
         /* LLM模型选择器特殊样式 */
@@ -807,6 +835,106 @@
             color: #1976d2;
             border-color: #bbdefb;
             background: #e3f2fd;
+        }
+
+        /* MCP工具结果样式 */
+        .mcp-results-container {
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            margin: 10px 0;
+            background: #fafafa;
+        }
+
+        .mcp-results-header {
+            background: #f5f5f5;
+            padding: 10px 15px;
+            border-bottom: 1px solid #e0e0e0;
+            border-radius: 8px 8px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .mcp-status {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .mcp-status-item {
+            background: #e8f5e8;
+            color: #2e7d32;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+
+        .mcp-status-item.tools {
+            background: #fff3e0;
+            color: #f57c00;
+        }
+
+        .mcp-results-content {
+            padding: 15px;
+        }
+
+        .mcp-tool-result {
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            background: white;
+        }
+
+        .mcp-tool-result.success {
+            border-left: 4px solid #4caf50;
+        }
+
+        .mcp-tool-result.error {
+            border-left: 4px solid #f44336;
+        }
+
+        .tool-header {
+            padding: 10px 15px;
+            background: #f9f9f9;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .tool-status {
+            margin-left: auto;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .tool-arguments, .tool-result, .tool-error {
+            padding: 10px 15px;
+        }
+
+        .tool-arguments code {
+            background: #f5f5f5;
+            padding: 8px;
+            border-radius: 4px;
+            display: block;
+            font-size: 12px;
+            white-space: pre-wrap;
+            margin-top: 5px;
+        }
+
+        .result-content, .error-content {
+            background: #f8f9fa;
+            padding: 8px 12px;
+            border-radius: 4px;
+            margin-top: 5px;
+            font-family: monospace;
+            font-size: 13px;
+        }
+
+        .error-content {
+            background: #ffebee;
+            color: #c62828;
         }
 
         .llm-answer-content {
@@ -1962,6 +2090,106 @@
         }
 
         /* =============== 通用样式 =============== */
+
+        /* MCP工具结果样式 */
+        .mcp-results-container {
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            margin: 10px 0;
+            background: #fafafa;
+        }
+
+        .mcp-results-header {
+            background: #f5f5f5;
+            padding: 10px 15px;
+            border-bottom: 1px solid #e0e0e0;
+            border-radius: 8px 8px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .mcp-status {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .mcp-status-item {
+            background: #e8f5e8;
+            color: #2e7d32;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+
+        .mcp-status-item.tools {
+            background: #fff3e0;
+            color: #f57c00;
+        }
+
+        .mcp-results-content {
+            padding: 15px;
+        }
+
+        .mcp-tool-result {
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            background: white;
+        }
+
+        .mcp-tool-result.success {
+            border-left: 4px solid #4caf50;
+        }
+
+        .mcp-tool-result.error {
+            border-left: 4px solid #f44336;
+        }
+
+        .tool-header {
+            padding: 10px 15px;
+            background: #f9f9f9;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .tool-status {
+            margin-left: auto;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .tool-arguments, .tool-result, .tool-error {
+            padding: 10px 15px;
+        }
+
+        .tool-arguments code {
+            background: #f5f5f5;
+            padding: 8px;
+            border-radius: 4px;
+            display: block;
+            font-size: 12px;
+            white-space: pre-wrap;
+            margin-top: 5px;
+        }
+
+        .result-content, .error-content {
+            background: #f8f9fa;
+            padding: 8px 12px;
+            border-radius: 4px;
+            margin-top: 5px;
+            font-family: monospace;
+            font-size: 13px;
+        }
+
+        .error-content {
+            background: #ffebee;
+            color: #c62828;
+        }
     </style>
 </head>
 <body>
@@ -2149,17 +2377,27 @@
                                         智能检索对话
                                     </h6>
                                     <div class="similarity-settings">
-                                        <small class="text-muted me-2">相关性要求：</small>
-                                        <select id="similarityLevel" class="form-select form-select-sm me-3" style="width: auto; font-size: 12px;">
-                                            <option value="high">高相关性</option>
-                                            <option value="medium" selected>中等相关性</option>
-                                            <option value="low">低相关性</option>
-                                            <option value="any">显示所有</option>
-                                        </select>
-                                        <small class="text-muted me-2">大语言模型：</small>
-                                        <select id="llmModelSelect" class="form-select form-select-sm" style="width: auto; font-size: 12px; min-width: 180px;">
-                                            <option value="">加载中...</option>
-                                        </select>
+                                        <div class="d-flex align-items-center me-3">
+                                            <small class="text-muted me-2">相关性要求：</small>
+                                            <select id="similarityLevel" class="form-select form-select-sm" style="width: 120px; font-size: 12px;">
+                                                <option value="high">高相关性</option>
+                                                <option value="medium" selected>中等相关性</option>
+                                                <option value="low">低相关性</option>
+                                                <option value="any">显示所有</option>
+                                            </select>
+                                        </div>
+                                        <div class="d-flex align-items-center me-3">
+                                            <small class="text-muted me-2">大语言模型：</small>
+                                            <select id="llmModelSelect" class="form-select form-select-sm" style="width: 180px; font-size: 12px;">
+                                                <option value="">加载中...</option>
+                                            </select>
+                                        </div>
+                                        <div class="d-flex align-items-center">
+                                            <small class="text-muted me-2">启用MCP工具：</small>
+                                            <div class="form-check form-switch">
+                                                <input class="form-check-input" type="checkbox" id="enableMCP">
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                                 <!-- 搜索策略提示 -->

@@ -453,6 +453,8 @@ def get_document_metadata(doc_id):
             service_type = 'image'
         elif file_type in ['video', 'mp4', 'avi', 'mov', 'wmv', 'mkv', 'flv', 'webm']:
             service_type = 'video'
+        elif file_type in ['txt', 'text', 'log', 'md', 'markdown', 'csv', 'json', 'xml', 'py', 'js', 'html', 'css', 'sql']:
+            service_type = 'text'
         
         if service_type:
             preview_service = PreviewServiceFactory.get_service(service_type)
@@ -473,4 +475,180 @@ def get_document_metadata(doc_id):
         return jsonify({
             'success': False,
             'error': '获取元数据失败'
-        }), 500 
+        }), 500
+
+@preview_bp.route('/text/<int:doc_id>', methods=['GET'])
+def preview_text(doc_id):
+    """文本文件预览（内容提取）"""
+    try:
+        # 获取文档信息
+        document = DocumentNode.query.get_or_404(doc_id)
+        
+        if document.is_deleted or document.type != 'file':
+            abort(404)
+        
+        # 检查文件类型
+        file_type = document.file_type.lower()
+        if file_type not in ['txt', 'text', 'log', 'md', 'markdown', 'csv', 'json', 'xml', 'py', 'js', 'html', 'css', 'sql']:
+            return jsonify({
+                'success': False,
+                'error': '文档类型不匹配'
+            }), 400
+        
+        # 获取预览服务
+        preview_service = PreviewServiceFactory.get_service('text')
+        
+        # 提取文档内容
+        content_data = preview_service.extract_content(document.file_path)
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'content': content_data.get('content', ''),
+                'encoding': content_data.get('encoding', 'utf-8'),
+                'is_truncated': content_data.get('is_truncated', False),
+                'metadata': content_data.get('metadata', {})
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"文本文件预览失败 - 文档ID: {doc_id}, 错误: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': '预览失败'
+        }), 500
+
+@preview_bp.route('/text/raw/<int:doc_id>', methods=['GET'])
+def preview_text_raw(doc_id):
+    """文本文件原始文件预览"""
+    try:
+        logger.info(f"开始处理文本文件原始预览请求 - 文档ID: {doc_id}")
+        
+        # 获取文档信息
+        document = DocumentNode.query.get_or_404(doc_id)
+        logger.info(f"找到文档: {document.name}, 类型: {document.file_type}")
+        
+        if document.is_deleted or document.type != 'file':
+            logger.warning(f"文档已删除或不是文件 - ID: {doc_id}")
+            abort(404)
+        
+        # 检查文件类型
+        file_type = document.file_type.lower()
+        logger.info(f"文件类型: {file_type}")
+        
+        if file_type not in ['txt', 'text', 'log', 'md', 'markdown', 'csv', 'json', 'xml', 'py', 'js', 'html', 'css', 'sql']:
+            logger.warning(f"文件类型不匹配 - 期望文本类型，实际: {file_type}")
+            abort(400)
+        
+        # 检查文件是否存在
+        logger.info(f"检查文件路径: {document.file_path}")
+        if not os.path.exists(document.file_path):
+            logger.error(f"文件不存在: {document.file_path}")
+            abort(404)
+        
+        logger.info(f"文件存在，准备返回文本文件: {document.file_path}")
+        
+        # 直接返回文本文件
+        try:
+            # 使用绝对路径
+            abs_path = os.path.abspath(document.file_path)
+            logger.info(f"使用绝对路径: {abs_path}")
+            
+            # 根据文件扩展名设置MIME类型
+            import mimetypes
+            mime_type, _ = mimetypes.guess_type(abs_path)
+            if not mime_type:
+                mime_type = 'text/plain'
+            
+            return send_file(abs_path, 
+                           as_attachment=False,
+                           mimetype=mime_type)
+        except Exception as send_error:
+            logger.error(f"send_file失败: {send_error}")
+            raise
+        
+    except Exception as e:
+        logger.error(f"文本文件原始预览失败 - 文档ID: {doc_id}, 错误: {str(e)}")
+        logger.error(f"错误详情: {type(e).__name__}: {str(e)}")
+        import traceback
+        logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+        abort(500)
+
+@preview_bp.route('/text/<int:doc_id>', methods=['POST'])
+def save_text(doc_id):
+    """保存文本文件内容"""
+    try:
+        from flask import request
+        from app import db
+        
+        # 获取请求数据
+        data = request.get_json()
+        if not data or 'content' not in data:
+            return jsonify({
+                'success': False,
+                'error': '缺少文件内容'
+            }), 400
+        
+        content = data['content']
+        
+        # 获取文档信息
+        document = DocumentNode.query.get_or_404(doc_id)
+        
+        if document.is_deleted or document.type != 'file':
+            abort(404)
+        
+        # 检查文件类型
+        file_type = document.file_type.lower()
+        if file_type not in ['txt', 'text', 'log', 'md', 'markdown', 'csv', 'json', 'xml', 'py', 'js', 'html', 'css', 'sql']:
+            return jsonify({
+                'success': False,
+                'error': '该文件类型不支持编辑'
+            }), 400
+        
+        # 检查文件是否存在
+        if not os.path.exists(document.file_path):
+            return jsonify({
+                'success': False,
+                'error': '文件不存在'
+            }), 404
+        
+        # 保存文件内容
+        try:
+            with open(document.file_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+            
+            # 更新文件大小
+            new_size = os.path.getsize(document.file_path)
+            document.file_size = new_size
+            
+            # 更新修改时间
+            from datetime import datetime
+            document.updated_at = datetime.utcnow()
+            
+            # 保存到数据库
+            db.session.commit()
+            
+            logger.info(f"文本文件保存成功 - 文档ID: {doc_id}, 新大小: {new_size} 字节")
+            
+            return jsonify({
+                'success': True,
+                'data': {
+                    'message': '文件保存成功',
+                    'file_size': new_size,
+                    'updated_at': document.updated_at.isoformat()
+                }
+            })
+            
+        except Exception as write_error:
+            logger.error(f"写入文件失败 - 文档ID: {doc_id}, 错误: {str(write_error)}")
+            return jsonify({
+                'success': False,
+                'error': '文件保存失败'
+            }), 500
+        
+    except Exception as e:
+        logger.error(f"保存文本文件失败 - 文档ID: {doc_id}, 错误: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': '保存失败'
+        }), 500

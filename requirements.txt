@@ -38,4 +38,5 @@ minio==7.2.0
 # 其他工具
 requests==2.31.0
 python-dotenv>=1.0.1,<2.0.0
-Werkzeug==2.3.7 
+Werkzeug==2.3.7
+chardet==5.2.0 

@@ -5,6 +5,7 @@ from .word_preview import WordPreviewService
 from .excel_preview import ExcelPreviewService
 from .image_preview import ImagePreviewService
 from .video_preview import VideoPreviewService
+from .text_preview import TextPreviewService
 
 __all__ = [
     'PreviewServiceFactory',
@@ -13,5 +14,6 @@ __all__ = [
     'WordPreviewService', 
     'ExcelPreviewService',
     'ImagePreviewService',
-    'VideoPreviewService'
+    'VideoPreviewService',
+    'TextPreviewService'
 ] 

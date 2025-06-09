@@ -2,163 +2,173 @@ from flask import Blueprint, request, jsonify
 from app.models import DocumentNode, SystemConfig
 from app.services.vectorization import VectorServiceAdapter
 from app.services.llm_service import LLMService
+# 旧的MCP服务已移除
 from config import Config
 import logging
+import asyncio
+import time
 
 logger = logging.getLogger(__name__)
 
 search_bp = Blueprint('search', __name__)
 
-@search_bp.route('/', methods=['POST'])
-def semantic_search():
-    """语义搜索"""
+@search_bp.route('/create-folder', methods=['POST'])
+def create_folder():
+    """创建文件夹（MCP功能）"""
     try:
         data = request.get_json()
-        query_text = data.get('query')
+        folder_name = data.get('name', '新文件夹').strip()
+        parent_id = data.get('parent_id')
+        
+        if not folder_name:
+            return jsonify({
+                'success': False,
+                'error': '文件夹名称不能为空'
+            }), 400
+        
+        # 创建文件夹
+        from app.models import DocumentNode
+        from app import db
+        
+        new_folder = DocumentNode(
+            name=folder_name,
+            type='folder',
+            parent_id=parent_id,
+            description=f"由MCP工具创建的文件夹: {folder_name}"
+        )
+        
+        db.session.add(new_folder)
+        db.session.commit()
+        
+        logger.info(f"MCP成功创建文件夹: {folder_name} (ID: {new_folder.id})")
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'id': new_folder.id,
+                'name': new_folder.name,
+                'parent_id': new_folder.parent_id,
+                'message': f"成功创建文件夹: {folder_name}"
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"创建文件夹失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@search_bp.route('/', methods=['POST'])
+def semantic_search():
+    """语义搜索接口"""
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({
+                'success': False,
+                'error': '请求数据为空'
+            }), 400
+        
+        query_text = data.get('query', '').strip()
         top_k = data.get('top_k', 10)
-        document_id = data.get('document_id')  # 可选，限制在特定文档中搜索
-        
-        # 新增：获取相似度阈值参数
-        similarity_level = data.get('similarity_level', 'medium')  # 默认中等相关性
-        
-        # 新增：LLM相关参数
-        use_llm = data.get('enable_llm', data.get('use_llm', False))  # 兼容两种参数名
-        llm_model = data.get('llm_model')
-        
-        # 添加调试日志
-        logger.info(f"收到搜索请求 - query: {query_text}, similarity_level: {similarity_level}, use_llm: {use_llm}, llm_model: {llm_model}")
-        
-        # 根据用户选择的相关性等级设置阈值
-        similarity_thresholds = {
-            'high': 0.6,      # 高相关性
-            'medium': 0.3,    # 中等相关性
-            'low': 0.1,       # 低相关性
-            'any': 0.0        # 基本不相关（显示所有结果）
-        }
-        min_score = similarity_thresholds.get(similarity_level, 0.3)
-        
-        logger.info(f"设置相似度阈值 - level: {similarity_level}, min_score: {min_score}")
+        enable_mcp = data.get('enable_mcp', False)
         
         if not query_text:
             return jsonify({
                 'success': False,
-                'error': '查询文本不能为空'
+                'error': '查询内容不能为空'
             }), 400
         
-        # 检测文档分析意图
-        analysis_intent = detect_analysis_intent(query_text)
-        if analysis_intent['is_analysis']:
-            return handle_document_analysis(analysis_intent, llm_model)
+        logger.info(f"接收到语义搜索请求: {query_text}, top_k: {top_k}, enable_mcp: {enable_mcp}")
         
-        # LLM步骤1：查询优化（使用智能提示词系统）
-        original_query = query_text
-        optimized_query = query_text
-        if use_llm and llm_model:
-            try:
-                optimized_query = LLMService.optimize_query(
-                    query_text, 
-                    llm_model=llm_model,
-                    scenario=None,  # 让系统自动分析
-                    template=None   # 让系统自动推荐
-                )
-                logger.info(f"智能LLM查询优化 - 原查询: {query_text}, 优化后: {optimized_query}")
-            except Exception as e:
-                logger.warning(f"LLM查询优化失败: {e}")
-                optimized_query = query_text
+        # 初始化结果
+        search_results = []
+        mcp_tool_results = []
+        skip_search = False  # 是否跳过语义搜索
         
-        # 初始化向量服务
-        milvus_host = SystemConfig.get_config('milvus_host', 'localhost')
-        milvus_port = SystemConfig.get_config('milvus_port', 19530)
-        embedding_model = SystemConfig.get_config('embedding_model')
-        
-        vector_service = VectorServiceAdapter(
-            milvus_host=milvus_host,
-            milvus_port=milvus_port,
-            embedding_model=embedding_model
-        )
-        
-        # 执行语义搜索，使用优化后的查询
-        search_results = vector_service.search_similar(
-            query_text=optimized_query,
-            top_k=top_k,
-            document_id=document_id,
-            min_score=min_score
-        )
-        
-        # 按文件聚合结果
-        file_results = aggregate_results_by_file(search_results)
-        
-        # LLM步骤2：结果重排序（基于文件）
-        reranked = False
-        if use_llm and llm_model and file_results:
-            try:
-                file_results = LLMService.rerank_file_results(original_query, file_results, llm_model)
-                reranked = True
-                logger.info(f"LLM文件结果重排序完成 - 处理了 {len(file_results)} 个文件")
-            except Exception as e:
-                logger.warning(f"LLM结果重排序失败: {e}")
-        
-        # LLM步骤3：答案生成（使用智能提示词系统）
-        llm_answer = None
-        if use_llm and llm_model and file_results:
-            try:
-                # 准备上下文文本
-                context_texts = []
-                for file_result in file_results[:5]:  # 只使用前5个文件结果生成答案
-                    doc_name = file_result['document']['name']
-                    # 合并该文件的所有匹配片段
-                    chunks = [chunk['text'] for chunk in file_result['chunks'][:3]]  # 每个文件最多3个片段
-                    combined_text = '\n'.join(chunks)
-                    context_texts.append(f"文档《{doc_name}》：{combined_text}")
+        # 优先检测MCP操作意图
+        if Config.MCP_CONFIG.get('enabled', False):
+            query_lower = query_text.lower()
+            
+            # 检测文件操作意图
+            create_folder_keywords = ['创建', '新建', '文件夹', '目录', '建立']
+            create_file_keywords = ['创建', '新建', '文件', '文档']
+            file_extensions = ['.txt', '.doc', '.docx', '.pdf', '.xls', '.xlsx', '.jpg', '.png', '.mp4', '.md']
+            
+            create_folder_detected = any(keyword in query_lower for keyword in create_folder_keywords)
+            create_file_detected = (any(keyword in query_lower for keyword in create_file_keywords) and 
+                                  not create_folder_detected) or any(ext in query_lower for ext in file_extensions)
+            
+            if create_folder_detected or create_file_detected:
+                logger.info(f"优先检测到文件操作意图，跳过语义搜索: {query_text}")
+                skip_search = True  # 跳过语义搜索
                 
-                context = '\n\n'.join(context_texts)
-                llm_answer = LLMService.generate_answer(
-                    original_query, 
-                    context, 
-                    llm_model=llm_model,
-                    scenario=None,  # 让系统自动分析
-                    style=None      # 让系统自动推荐
-                )
-                logger.info(f"智能LLM答案生成完成 - 查询: {original_query}")
-            except Exception as e:
-                logger.warning(f"LLM答案生成失败: {e}")
+                # 使用简化的MCP服务直接执行操作
+                from app.services.mcp_service_simple import simple_mcp_service
+                
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    # 执行简化MCP工具序列
+                    mcp_tool_results = loop.run_until_complete(
+                        simple_mcp_service.execute_tool_sequence(query_text)
+                    )
+                    logger.info(f"MCP工具执行完成，共 {len(mcp_tool_results)} 个步骤")
+                except Exception as mcp_error:
+                    logger.error(f"MCP工具执行失败: {mcp_error}")
+                    mcp_tool_results = [{
+                        'tool_name': 'error',
+                        'arguments': {},
+                        'result': None,
+                        'error': f"MCP工具执行失败: {str(mcp_error)}",
+                        'timestamp': time.time()
+                    }]
+                finally:
+                    loop.close()
         
-        response_data = {
+        # 只有在没有MCP操作时才执行语义搜索
+        if not skip_search:
+            try:
+                vector_service = VectorServiceAdapter()
+                search_results = vector_service.search(query_text, top_k=top_k)
+                logger.info(f"语义搜索完成，找到 {len(search_results)} 个结果")
+            except Exception as e:
+                logger.error(f"语义搜索失败: {str(e)}")
+                search_results = []
+        
+
+        
+        # 构建响应数据（与混合搜索格式保持一致）
+        data = {
             'query': query_text,
-            'similarity_level': similarity_level,
-            'min_score': min_score,
-            'total_files': len(file_results),
-            'file_results': file_results
+            'results': search_results,
+            'total_results': len(search_results),
+            'search_type': 'semantic'
         }
         
-        # 添加LLM处理信息
-        if use_llm:
-            response_data['llm_info'] = {
-                'used': True,
-                'model': llm_model,
-                'original_query': original_query,
-                'optimized_query': optimized_query,
-                'query_optimized': optimized_query != original_query,
-                'reranked': reranked,
-                'answer': llm_answer
-            }
-        else:
-            response_data['llm_info'] = {
-                'used': False
-            }
+        # 如果有MCP工具结果，添加到响应中
+        if mcp_tool_results:
+            data['mcp_results'] = [{
+                'tool_name': result.tool_name if hasattr(result, 'tool_name') else result.get('tool_name'),
+                'arguments': result.arguments if hasattr(result, 'arguments') else result.get('arguments', {}),
+                'result': result.result if hasattr(result, 'result') else result.get('result'),
+                'error': result.error if hasattr(result, 'error') else result.get('error'),
+                'timestamp': result.timestamp if hasattr(result, 'timestamp') else result.get('timestamp')
+            } for result in mcp_tool_results]
         
-        logger.info(f"返回搜索结果 - similarity_level: {response_data['similarity_level']}, min_score: {response_data['min_score']}, files: {response_data['total_files']}")
-        
+        # 使用与混合搜索一致的响应格式
         return jsonify({
             'success': True,
-            'data': response_data
+            'data': data
         })
         
     except Exception as e:
-        logger.error(f"语义搜索失败: {str(e)}")
+        logger.error(f"语义搜索请求处理失败: {str(e)}")
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': f'搜索失败: {str(e)}'
         }), 500
 
 @search_bp.route('/documents', methods=['GET'])
@@ -319,64 +329,119 @@ def hybrid_search():
                 'error': '查询文本不能为空'
             }), 400
         
-        # LLM查询优化（使用智能提示词系统）
-        original_query = query_text
-        optimized_query = query_text
-        if use_llm and llm_model:
-            try:
-                optimized_query = LLMService.optimize_query(
-                    query_text, 
-                    llm_model=llm_model,
-                    scenario=None,  # 让系统自动分析
-                    template=None   # 让系统自动推荐
-                )
-                logger.info(f"混合搜索智能LLM查询优化 - 原查询: {query_text}, 优化后: {optimized_query}")
-            except Exception as e:
-                logger.warning(f"混合搜索LLM查询优化失败: {e}")
-                optimized_query = query_text
+        # 初始化结果变量
+        semantic_results = []
+        keyword_results = []
+        combined_results = []
+        file_results = []
+        mcp_tool_results = []
+        skip_search = False  # 是否跳过搜索
         
-        # 设置相似度阈值（针对银行等特定查询提高阈值）
-        similarity_thresholds = {
-            'high': 0.6, 'medium': 0.3, 'low': 0.1, 'any': 0.0
-        }
-        min_score = similarity_thresholds.get(similarity_level, 0.3)
+        # 优先检测MCP操作意图
+        if Config.MCP_CONFIG.get('enabled', False):
+            query_lower = query_text.lower()
+            
+            # 检测文件操作意图
+            create_folder_keywords = ['创建', '新建', '文件夹', '目录', '建立']
+            create_file_keywords = ['创建', '新建', '文件', '文档']
+            file_extensions = ['.txt', '.doc', '.docx', '.pdf', '.xls', '.xlsx', '.jpg', '.png', '.mp4', '.md']
+            
+            create_folder_detected = any(keyword in query_lower for keyword in create_folder_keywords)
+            create_file_detected = (any(keyword in query_lower for keyword in create_file_keywords) and 
+                                  not create_folder_detected) or any(ext in query_lower for ext in file_extensions)
+            
+            if create_folder_detected or create_file_detected:
+                logger.info(f"混合搜索优先检测到文件操作意图，跳过搜索: {query_text}")
+                skip_search = True  # 跳过搜索
+                
+                # 使用简化的MCP服务直接执行操作
+                from app.services.mcp_service_simple import simple_mcp_service
+                
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    # 执行简化MCP工具序列
+                    mcp_tool_results = loop.run_until_complete(
+                        simple_mcp_service.execute_tool_sequence(query_text)
+                    )
+                    logger.info(f"混合搜索MCP工具执行完成，共 {len(mcp_tool_results)} 个步骤")
+                except Exception as mcp_error:
+                    logger.error(f"混合搜索MCP工具执行失败: {mcp_error}")
+                    mcp_tool_results = [{
+                        'tool_name': 'error',
+                        'arguments': {},
+                        'result': None,
+                        'error': f"MCP工具执行失败: {str(mcp_error)}",
+                        'timestamp': time.time()
+                    }]
+                finally:
+                    loop.close()
         
-        # 对特定查询类型动态调整阈值
-        if any(word in query_text.lower() for word in ['银行', '金融机构', '贷款']):
-            min_score = max(min_score, 0.4)  # 银行相关查询提高最低阈值
-            logger.info(f"检测到银行相关查询，提高阈值到: {min_score}")
-        
-        # 初始化向量服务
-        milvus_host = SystemConfig.get_config('milvus_host', 'localhost')
-        milvus_port = SystemConfig.get_config('milvus_port', 19530)
-        embedding_model = SystemConfig.get_config('embedding_model')
-        
-        vector_service = VectorServiceAdapter(
-            milvus_host=milvus_host,
-            milvus_port=milvus_port,
-            embedding_model=embedding_model
-        )
-        
-        # 1. 执行语义搜索（使用优化后的查询）
-        semantic_results = vector_service.search_similar(
-            query_text=optimized_query,
-            top_k=top_k,
-            document_id=document_id,
-            min_score=min_score
-        )
-        
-        # 2. 执行关键词搜索（使用优化后的查询）
-        keyword_results = vector_service.search_by_keywords(
-            query_text=optimized_query,
-            top_k=top_k,
-            document_id=document_id
-        )
-        
-        # 3. 合并和去重结果
-        combined_results = merge_search_results(semantic_results, keyword_results, query_text)
-        
-        # 4. 丰富结果信息并按文件聚合
-        file_results = aggregate_results_by_file(combined_results)
+        # 只有在没有MCP操作时才执行搜索
+        if not skip_search:
+            # LLM查询优化（使用智能提示词系统）
+            original_query = query_text
+            optimized_query = query_text
+            if use_llm and llm_model:
+                try:
+                    optimized_query = LLMService.optimize_query(
+                        query_text, 
+                        llm_model=llm_model,
+                        scenario=None,  # 让系统自动分析
+                        template=None   # 让系统自动推荐
+                    )
+                    logger.info(f"混合搜索智能LLM查询优化 - 原查询: {query_text}, 优化后: {optimized_query}")
+                except Exception as e:
+                    logger.warning(f"混合搜索LLM查询优化失败: {e}")
+                    optimized_query = query_text
+            
+            # 设置相似度阈值（针对银行等特定查询提高阈值）
+            similarity_thresholds = {
+                'high': 0.6, 'medium': 0.3, 'low': 0.1, 'any': 0.0
+            }
+            min_score = similarity_thresholds.get(similarity_level, 0.3)
+            
+            # 对特定查询类型动态调整阈值
+            if any(word in query_text.lower() for word in ['银行', '金融机构', '贷款']):
+                min_score = max(min_score, 0.4)  # 银行相关查询提高最低阈值
+                logger.info(f"检测到银行相关查询，提高阈值到: {min_score}")
+            
+            # 初始化向量服务
+            milvus_host = SystemConfig.get_config('milvus_host', 'localhost')
+            milvus_port = SystemConfig.get_config('milvus_port', 19530)
+            embedding_model = SystemConfig.get_config('embedding_model')
+            
+            vector_service = VectorServiceAdapter(
+                milvus_host=milvus_host,
+                milvus_port=milvus_port,
+                embedding_model=embedding_model
+            )
+            
+            # 1. 执行语义搜索（使用优化后的查询）
+            semantic_results = vector_service.search_similar(
+                query_text=optimized_query,
+                top_k=top_k,
+                document_id=document_id,
+                min_score=min_score
+            )
+            
+            # 2. 执行关键词搜索（使用优化后的查询）
+            keyword_results = vector_service.search_by_keywords(
+                query_text=optimized_query,
+                top_k=top_k,
+                document_id=document_id
+            )
+            
+            # 3. 合并和去重结果
+            combined_results = merge_search_results(semantic_results, keyword_results, query_text)
+            
+            # 4. 丰富结果信息并按文件聚合
+            file_results = aggregate_results_by_file(combined_results)
+        else:
+            # 如果跳过搜索，初始化变量以避免后续处理中的错误
+            original_query = query_text
+            optimized_query = query_text
+            min_score = 0.0
         
         # 5. LLM结果重排序（基于文件）
         reranked = False
@@ -412,6 +477,8 @@ def hybrid_search():
                 logger.info(f"混合搜索智能LLM答案生成完成 - 查询: {original_query}")
             except Exception as e:
                 logger.warning(f"混合搜索LLM答案生成失败: {e}")
+
+        # 7. MCP工具调用已在前面处理
         
         response_data = {
             'query': query_text,
@@ -439,6 +506,16 @@ def hybrid_search():
             response_data['llm_info'] = {
                 'used': False
             }
+        
+        # 添加MCP工具结果
+        if mcp_tool_results:
+            response_data['mcp_results'] = [{
+                'tool_name': result.tool_name if hasattr(result, 'tool_name') else result.get('tool_name'),
+                'arguments': result.arguments if hasattr(result, 'arguments') else result.get('arguments', {}),
+                'result': result.result if hasattr(result, 'result') else result.get('result'),
+                'error': result.error if hasattr(result, 'error') else result.get('error'),
+                'timestamp': result.timestamp if hasattr(result, 'timestamp') else result.get('timestamp')
+            } for result in mcp_tool_results]
         
         logger.info(f"混合搜索完成 - semantic: {len(semantic_results)}, keyword: {len(keyword_results)}, files: {len(file_results)}")
         
@@ -829,4 +906,74 @@ def handle_document_analysis(analysis_intent, llm_model):
         return jsonify({
             'success': False,
             'error': f'处理文档分析请求失败: {str(e)}'
-        }), 500 
+        }), 500
+
+
+def _extract_tool_arguments(tool_info: dict, query_text: str) -> dict:
+    """从查询文本中提取工具参数"""
+    tool_name = tool_info.get('name', '')
+    parameters = tool_info.get('parameters', {})
+    arguments = {}
+    
+    try:
+        # 根据工具类型和参数定义提取参数
+        if tool_name == 'navigate':
+            # 提取URL
+            import re
+            url_pattern = r'https?://[^\s]+'
+            url_match = re.search(url_pattern, query_text)
+            if url_match:
+                arguments['url'] = url_match.group()
+            else:
+                # 如果没有找到完整URL，可能需要用户补充
+                arguments['url'] = 'https://www.example.com'
+        
+        elif tool_name == 'web_search':
+            # 对于网络搜索，直接使用查询文本
+            arguments['query'] = query_text
+            arguments['num_results'] = 5
+        
+        elif tool_name == 'screenshot':
+            # 截图工具通常不需要特定参数
+            arguments['full_page'] = True
+        
+        elif tool_name == 'click':
+            # 点击需要选择器，从查询中提取
+            if '按钮' in query_text:
+                arguments['selector'] = 'button'
+            elif '链接' in query_text:
+                arguments['selector'] = 'a'
+            else:
+                arguments['selector'] = '*'
+        
+        elif tool_name == 'fill_form':
+            # 表单填写需要选择器和值
+            arguments['selector'] = 'input'
+            arguments['value'] = '示例值'
+        
+        elif tool_name == 'get_page_content':
+            # 获取页面内容
+            import re
+            url_pattern = r'https?://[^\s]+'
+            url_match = re.search(url_pattern, query_text)
+            if url_match:
+                arguments['url'] = url_match.group()
+            else:
+                arguments['url'] = 'https://www.example.com'
+        
+        # 如果工具有必需参数但未提取到，使用默认值
+        for param_name, param_info in parameters.items():
+            if param_name not in arguments and not param_info.get('optional', False):
+                if param_info.get('type') == 'string':
+                    arguments[param_name] = f"从查询提取: {query_text[:50]}"
+                elif param_info.get('type') == 'integer':
+                    arguments[param_name] = param_info.get('default', 1)
+                elif param_info.get('type') == 'boolean':
+                    arguments[param_name] = param_info.get('default', True)
+        
+        logger.info(f"提取工具参数 - 工具: {tool_name}, 参数: {arguments}")
+        return arguments
+        
+    except Exception as e:
+        logger.warning(f"提取工具参数失败: {e}")
+        return {} 

@@ -37,6 +37,9 @@ function initUnifiedInterface() {
     // 初始化LLM模型选择器
     initLLMModelSelector();
     
+    // 初始化MCP功能
+    initMCPFeatures();
+    
     // 初始化上传功能（只初始化一次）
     if (!uploadAreaInitialized) {
         initUploadArea();
@@ -1968,7 +1971,20 @@ function getFileIcon(fileType) {
         'word': 'bi-file-earmark-word icon-word',
         'excel': 'bi-file-earmark-excel icon-excel',
         'image': 'bi-file-earmark-image icon-image',
-        'video': 'bi-file-earmark-play icon-video'
+        'video': 'bi-file-earmark-play icon-video',
+        'txt': 'bi-file-earmark-text icon-text',
+        'text': 'bi-file-earmark-text icon-text',
+        'log': 'bi-file-earmark-text icon-text',
+        'md': 'bi-file-earmark-text icon-text',
+        'markdown': 'bi-file-earmark-text icon-text',
+        'csv': 'bi-file-earmark-spreadsheet icon-text',
+        'json': 'bi-file-earmark-code icon-text',
+        'xml': 'bi-file-earmark-code icon-text',
+        'py': 'bi-file-earmark-code icon-text',
+        'js': 'bi-file-earmark-code icon-text',
+        'html': 'bi-file-earmark-code icon-text',
+        'css': 'bi-file-earmark-code icon-text',
+        'sql': 'bi-file-earmark-code icon-text'
     };
     return icons[fileType] || 'bi-file-earmark icon-file';
 }
@@ -1984,7 +2000,20 @@ function getFileIconForName(fileName) {
         'jpg': 'bi-file-earmark-image icon-image',
         'jpeg': 'bi-file-earmark-image icon-image',
         'png': 'bi-file-earmark-image icon-image',
-        'gif': 'bi-file-earmark-image icon-image'
+        'gif': 'bi-file-earmark-image icon-image',
+        'txt': 'bi-file-earmark-text icon-text',
+        'text': 'bi-file-earmark-text icon-text',
+        'log': 'bi-file-earmark-text icon-text',
+        'md': 'bi-file-earmark-text icon-text',
+        'markdown': 'bi-file-earmark-text icon-text',
+        'csv': 'bi-file-earmark-spreadsheet icon-text',
+        'json': 'bi-file-earmark-code icon-text',
+        'xml': 'bi-file-earmark-code icon-text',
+        'py': 'bi-file-earmark-code icon-text',
+        'js': 'bi-file-earmark-code icon-text',
+        'html': 'bi-file-earmark-code icon-text',
+        'css': 'bi-file-earmark-code icon-text',
+        'sql': 'bi-file-earmark-code icon-text'
     };
     return iconMap[ext] || 'bi-file-earmark icon-file';
 }
@@ -2247,6 +2276,9 @@ async function previewDocument(node) {
                 </div>
             `;
             return;
+        } else if (['txt', 'text', 'log', 'md', 'markdown', 'csv', 'json', 'xml', 'py', 'js', 'html', 'css', 'sql'].includes(fileType)) {
+            // 对于文本文件，使用API获取文本内容
+            response = await fetch(`/api/preview/text/${node.id}`);
         } else {
             previewContent.innerHTML = `
                 <div class="empty-state" style="margin-bottom: 15px;">
@@ -2430,6 +2462,121 @@ function displayPreviewContent(data, fileType, node) {
                 </div>
             `;
         }
+    } else if (['txt', 'text', 'log', 'md', 'markdown', 'csv', 'json', 'xml', 'py', 'js', 'html', 'css', 'sql'].includes(fileType)) {
+        // 文本文件预览处理
+        const content = data.content || '';
+        const encoding = data.encoding || 'utf-8';
+        const isTruncated = data.is_truncated || false;
+        const metadata = data.metadata || {};
+        
+        if (content) {
+            // 根据文件类型设置语法高亮类名
+            let syntaxClass = '';
+            if (['py'].includes(fileType)) {
+                syntaxClass = 'language-python';
+            } else if (['js'].includes(fileType)) {
+                syntaxClass = 'language-javascript';
+            } else if (['html'].includes(fileType)) {
+                syntaxClass = 'language-html';
+            } else if (['css'].includes(fileType)) {
+                syntaxClass = 'language-css';
+            } else if (['sql'].includes(fileType)) {
+                syntaxClass = 'language-sql';
+            } else if (['json'].includes(fileType)) {
+                syntaxClass = 'language-json';
+            } else if (['xml'].includes(fileType)) {
+                syntaxClass = 'language-xml';
+            } else if (['md', 'markdown'].includes(fileType)) {
+                syntaxClass = 'language-markdown';
+            }
+            
+            // 文件类型标题映射
+            const fileTypeNames = {
+                'txt': '纯文本文件',
+                'text': '文本文件',
+                'log': '日志文件',
+                'md': 'Markdown文档',
+                'markdown': 'Markdown文档',
+                'csv': 'CSV数据文件',
+                'json': 'JSON数据文件',
+                'xml': 'XML文档',
+                'py': 'Python源代码',
+                'js': 'JavaScript源代码',
+                'html': 'HTML网页文件',
+                'css': 'CSS样式表',
+                'sql': 'SQL脚本文件'
+            };
+            
+            const typeDisplayName = fileTypeNames[fileType] || '文本文件';
+            
+            // 构建元数据信息
+            let metadataInfo = '';
+            if (metadata.lines) {
+                metadataInfo += `<span class="me-3"><i class="bi bi-file-text me-1"></i>行数: ${metadata.lines}</span>`;
+            }
+            if (metadata.words) {
+                metadataInfo += `<span class="me-3"><i class="bi bi-fonts me-1"></i>字数: ${metadata.words}</span>`;
+            }
+            if (metadata.characters) {
+                metadataInfo += `<span class="me-3"><i class="bi bi-abc me-1"></i>字符数: ${metadata.characters}</span>`;
+            }
+            
+            previewContent.innerHTML = `
+                <div class="text-file-content" style="flex: 1; margin-bottom: 15px;">
+                    <div class="text-preview-info mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <div>
+                                <p class="mb-1"><strong>文件内容:</strong></p>
+                                <p class="mb-0 text-muted">${typeDisplayName} (${encoding})</p>
+                            </div>
+                            <div class="text-file-actions">
+                                <button id="editTextBtn" class="btn btn-sm btn-outline-primary me-2" onclick="toggleTextEdit(${node.id})" title="编辑文件">
+                                    <i class="bi bi-pencil me-1"></i>编辑
+                                </button>
+                                <button id="saveTextBtn" class="btn btn-sm btn-success me-2 d-none" onclick="saveTextContent(${node.id})" title="保存文件">
+                                    <i class="bi bi-check-lg me-1"></i>保存
+                                </button>
+                                <button id="cancelTextBtn" class="btn btn-sm btn-secondary d-none" onclick="cancelTextEdit()" title="取消编辑">
+                                    <i class="bi bi-x-lg me-1"></i>取消
+                                </button>
+                            </div>
+                        </div>
+                        ${metadataInfo ? `<div class="text-metadata small text-muted">${metadataInfo}</div>` : ''}
+                        ${isTruncated ? '<div class="alert alert-info alert-sm mt-2 mb-0"><i class="bi bi-info-circle me-1"></i>内容已截断，完整内容请查看原始文件</div>' : ''}
+                    </div>
+                    <div class="text-content-preview">
+                        <div class="card">
+                            <div class="card-body p-0">
+                                <pre id="textPreviewContent" class="text-content mb-0 ${syntaxClass}" style="max-height: 400px; overflow-y: auto; white-space: pre-wrap; line-height: 1.5; font-size: 13px; font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; padding: 15px; margin: 0; background-color: #f8f9fa; border: none;"><code>${escapeHtml(content)}</code></pre>
+                                <textarea id="textEditContent" class="form-control d-none" style="height: 400px; font-size: 13px; font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; resize: vertical; border: none; border-radius: 0;">${escapeHtml(content)}</textarea>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="document-info-section">
+                    ${generateDocumentInfo(node)}
+                </div>
+            `;
+            
+            // 存储原始内容，以便取消编辑时恢复
+            window.originalTextContent = content;
+        } else {
+            previewContent.innerHTML = `
+                <div class="text-file-content" style="flex: 1; margin-bottom: 15px;">
+                    <div class="text-preview-info mb-3">
+                        <p class="mb-0 text-muted">文本文件预览</p>
+                    </div>
+                    <div class="empty-state">
+                        <i class="bi bi-file-earmark-text"></i>
+                        <h5>文本文件</h5>
+                        <p>文件内容为空或无法读取</p>
+                    </div>
+                </div>
+                <div class="document-info-section">
+                    ${generateDocumentInfo(node)}
+                </div>
+            `;
+        }
     }
 }
 
@@ -2454,6 +2601,7 @@ function initChatInput() {
 async function sendChatMessage() {
     const chatInput = document.getElementById('chatInput');
     const similarityLevel = document.getElementById('similarityLevel');
+    const enableMCPCheckbox = document.getElementById('enableMCP');
     const message = chatInput.value.trim();
     
     if (!message) {
@@ -2465,6 +2613,9 @@ async function sendChatMessage() {
     
     // 获取LLM配置
     const llmConfig = getLLMConfig();
+    
+    // 获取MCP配置
+    const enableMCP = enableMCPCheckbox ? enableMCPCheckbox.checked : false;
     
     // 添加用户消息到聊天记录
     addChatMessage('user', message);
@@ -2484,7 +2635,8 @@ async function sendChatMessage() {
             top_k: 5,
             similarity_level: selectedSimilarity,
             llm_model: llmConfig.model,
-            enable_llm: llmConfig.isAvailable
+            enable_llm: llmConfig.isAvailable,
+            enable_mcp: enableMCP
         };
         
         let response;
@@ -2530,7 +2682,8 @@ async function sendChatMessage() {
                     previewDocument(document);
                 }
             } else if ((result.data.file_results && result.data.file_results.length > 0) || 
-                      (result.data.results && result.data.results.length > 0)) {
+                      (result.data.results && result.data.results.length > 0) ||
+                      (result.data.mcp_results && result.data.mcp_results.length > 0)) {
                 // 普通搜索结果处理
                 
                 // 如果有LLM答案，先显示LLM答案
@@ -2539,22 +2692,56 @@ async function sendChatMessage() {
                     addChatMessage('assistant', llmMessage);
                 }
                 
-                // 显示搜索结果（优先使用文件级别结果）
-                const resultMessage = formatFileSearchResults(result.data, message);
-                addChatMessage('assistant', resultMessage);
+                // 如果有MCP工具结果，显示工具执行结果
+                if (result.data.mcp_results && result.data.mcp_results.length > 0) {
+                    try {
+                        const mcpMessage = formatMCPResults(result.data.mcp_results);
+                        addChatMessage('assistant', mcpMessage);
+                        
+                        // 检查是否需要刷新文档树
+                        const needRefresh = result.data.mcp_results.some(r => 
+                            r && r.arguments && r.arguments.action === 'refresh_tree'
+                        );
+                        
+                        if (needRefresh) {
+                            // 延迟刷新，让用户看到操作结果
+                            setTimeout(() => {
+                                try {
+                                    loadFileTree();
+                                    showSuccess('文档树已更新');
+                                } catch (refreshError) {
+                                    console.error('Failed to refresh file tree:', refreshError);
+                                    showError('文档树刷新失败');
+                                }
+                            }, 1000);
+                        }
+                    } catch (mcpError) {
+                        console.error('Error processing MCP results:', mcpError, result.data.mcp_results);
+                        addChatMessage('assistant', '❌ MCP工具结果处理异常，请查看控制台日志获取详细信息。');
+                    }
+                }
                 
-                // 如果有搜索结果，自动预览第一个文档
-                const fileResults = result.data.file_results || result.data.results;
-                if (fileResults && fileResults.length > 0) {
+                // 只有在有搜索结果时才显示搜索结果
+                const fileResults = result.data.file_results || result.data.results || [];
+                if (fileResults.length > 0) {
+                    // 显示搜索结果（优先使用文件级别结果）
+                    const resultMessage = formatFileSearchResults(result.data, message);
+                    addChatMessage('assistant', resultMessage);
+                    
+                    // 如果有搜索结果，自动预览第一个文档
                     const firstFile = fileResults[0];
-                    const document = firstFile.document || firstFile.document;
+                    const document = firstFile.document || firstFile;
                     if (document) {
                         highlightDocumentInTree(document.id);
                         previewDocument(document);
                     }
+                } else if (!result.data.mcp_results || result.data.mcp_results.length === 0) {
+                    // 只有在既没有MCP结果又没有搜索结果时，才显示搜索建议
+                    const suggestionMessage = generateSearchSuggestions(message, selectedSimilarity, searchStrategy);
+                    addChatMessage('assistant', suggestionMessage);
                 }
             } else {
-                // 智能提示用户如何优化搜索
+                // 当没有任何结果时，显示搜索建议
                 const suggestionMessage = generateSearchSuggestions(message, selectedSimilarity, searchStrategy);
                 addChatMessage('assistant', suggestionMessage);
             }
@@ -2632,6 +2819,105 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+// MCP工具结果格式化函数
+function formatMCPResults(mcpResults) {
+    try {
+        // 确保mcpResults是数组
+        if (!Array.isArray(mcpResults)) {
+            console.warn('formatMCPResults: mcpResults is not an array:', mcpResults);
+            return '<div class="mcp-results-container"><div class="alert alert-warning">MCP结果格式异常</div></div>';
+        }
+        
+        let message = `<div class="mcp-results-container">
+            <div class="mcp-results-header">
+                <i class="bi bi-tools"></i> <strong>MCP工具执行结果</strong>
+                <div class="mcp-status">
+                    <span class="mcp-status-item tools"><i class="bi bi-gear"></i> ${mcpResults.length} 个工具执行</span>
+                </div>
+            </div>
+            <div class="mcp-results-content">`;
+        
+        mcpResults.forEach((result, index) => {
+            try {
+                // 安全检查result对象
+                if (!result || typeof result !== 'object') {
+                    console.warn('formatMCPResults: Invalid result at index', index, result);
+                    return;
+                }
+                
+                const isSuccess = !result.error;
+                const statusIcon = isSuccess ? 'bi-check-circle-fill text-success' : 'bi-x-circle-fill text-danger';
+                const statusText = isSuccess ? '成功' : '失败';
+                const toolName = result.tool_name || '未知工具';
+                
+                message += `
+                    <div class="mcp-tool-result ${isSuccess ? 'success' : 'error'}">
+                        <div class="tool-header">
+                            <i class="bi ${statusIcon}"></i>
+                            <strong>${escapeHtml(toolName)}</strong>
+                            <span class="tool-status">${statusText}</span>
+                        </div>`;
+                
+                if (result.arguments && typeof result.arguments === 'object' && Object.keys(result.arguments).length > 0) {
+                    try {
+                        const argumentsJson = JSON.stringify(result.arguments, null, 2);
+                        message += `<div class="tool-arguments">
+                            <small class="text-muted">参数：</small>
+                            <code>${escapeHtml(argumentsJson)}</code>
+                        </div>`;
+                    } catch (jsonError) {
+                        console.warn('formatMCPResults: Failed to stringify arguments:', jsonError);
+                        message += `<div class="tool-arguments">
+                            <small class="text-muted">参数：</small>
+                            <code>参数格式化失败</code>
+                        </div>`;
+                    }
+                }
+                
+                if (isSuccess && result.result) {
+                    message += `<div class="tool-result">
+                        <small class="text-muted">结果：</small>
+                        <div class="result-content">${escapeHtml(String(result.result))}</div>
+                    </div>`;
+                }
+                
+                if (!isSuccess && result.error) {
+                    message += `<div class="tool-error">
+                        <small class="text-danger">错误：</small>
+                        <div class="error-content">${escapeHtml(String(result.error))}</div>
+                    </div>`;
+                }
+                
+                message += `</div>`;
+            } catch (itemError) {
+                console.error('formatMCPResults: Error processing result item:', itemError, result);
+                message += `<div class="mcp-tool-result error">
+                    <div class="tool-header">
+                        <i class="bi bi-x-circle-fill text-danger"></i>
+                        <strong>处理错误</strong>
+                        <span class="tool-status">失败</span>
+                    </div>
+                    <div class="tool-error">
+                        <small class="text-danger">错误：</small>
+                        <div class="error-content">处理MCP结果时出现异常</div>
+                    </div>
+                </div>`;
+            }
+        });
+        
+        message += `</div></div>`;
+        return message;
+    } catch (error) {
+        console.error('formatMCPResults: Critical error:', error);
+        return `<div class="mcp-results-container">
+            <div class="alert alert-danger">
+                <i class="bi bi-exclamation-triangle"></i>
+                MCP结果显示异常：${escapeHtml(error.message)}
+            </div>
+        </div>`;
+    }
+}
+
 function formatFileSearchResults(data, query) {
     // 检查是否是文档分析结果
     if (data.is_analysis && data.analysis_result) {
@@ -2665,8 +2951,13 @@ function formatFileSearchResults(data, query) {
     }
     
     // 优先使用file_results，回退到results
-    const fileResults = data.file_results || data.results;
+    const fileResults = data.file_results || data.results || [];
     const resultCount = data.total_files || fileResults.length;
+    
+    // 如果没有搜索结果，返回空字符串
+    if (fileResults.length === 0) {
+        return '';
+    }
     
     let message = optimizationInfo + `📁 找到了 ${resultCount} 个相关文件 (${levelText})${searchTypeText}：\n\n`;
     
@@ -3983,4 +4274,308 @@ function formatAnalysisResults(data) {
     html += `</div>`;
     
     return html;
+}
+
+// ============ MCP功能 ============
+
+async function initMCPFeatures() {
+    try {
+        const enableMCPCheckbox = document.getElementById('enableMCP');
+        
+        if (!enableMCPCheckbox) {
+            console.warn('MCP复选框元素未找到');
+            return;
+        }
+        
+        // 首先设置默认状态
+        enableMCPCheckbox.disabled = false;
+        enableMCPCheckbox.checked = false;
+        enableMCPCheckbox.title = '正在检查MCP功能状态...';
+        
+        try {
+            // 检查MCP配置
+            const response = await fetch('/api/mcp/config');
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                const mcpConfig = result.data;
+                
+                // 根据配置设置状态
+                enableMCPCheckbox.checked = false; // 默认不选中
+                
+                // 开关始终可以操作，但根据配置给出不同的提示
+                enableMCPCheckbox.disabled = false;
+                if (!mcpConfig.enabled) {
+                    enableMCPCheckbox.title = 'MCP功能未在服务器端启用，点击开关无效果';
+                    enableMCPCheckbox.setAttribute('data-server-disabled', 'true');
+                } else {
+                    enableMCPCheckbox.title = 'MCP工具可以帮助执行网页操作、文件搜索等任务';
+                    enableMCPCheckbox.setAttribute('data-server-disabled', 'false');
+                }
+                
+                console.log('MCP功能初始化完成', mcpConfig);
+            } else {
+                throw new Error(result.error || '获取MCP配置失败');
+            }
+        } catch (configError) {
+            console.warn('MCP配置检查失败，设置为默认状态:', configError);
+            // 设置为默认可用状态
+            enableMCPCheckbox.disabled = false;
+            enableMCPCheckbox.checked = false;
+            enableMCPCheckbox.title = 'MCP工具功能 (配置检查失败，但可以尝试使用)';
+            enableMCPCheckbox.setAttribute('data-server-disabled', 'false');
+        }
+        
+        // 添加变化监听器
+        enableMCPCheckbox.addEventListener('change', function() {
+            const isServerDisabled = this.getAttribute('data-server-disabled') === 'true';
+            
+            if (this.checked) {
+                if (isServerDisabled) {
+                    showWarning('MCP功能未在服务器端启用，无法使用MCP工具。请联系管理员启用MCP功能。');
+                    // 自动取消选中
+                    setTimeout(() => {
+                        this.checked = false;
+                    }, 100);
+                } else {
+                    showInfo('MCP工具已启用，系统将根据您的查询自动调用相关工具');
+                }
+            } else {
+                if (!isServerDisabled) {
+                    showInfo('MCP工具已禁用');
+                }
+            }
+        });
+        
+    } catch (error) {
+        console.error('初始化MCP功能失败:', error);
+        
+        // 即使失败也要设置基本的状态
+        const enableMCPCheckbox = document.getElementById('enableMCP');
+        if (enableMCPCheckbox) {
+            enableMCPCheckbox.disabled = false;
+            enableMCPCheckbox.checked = false;
+            enableMCPCheckbox.title = 'MCP工具功能 (初始化失败，但可以尝试使用)';
+            enableMCPCheckbox.setAttribute('data-server-disabled', 'false');
+        }
+    }
+}
+
+async function getMCPStatus() {
+    try {
+        const response = await fetch('/api/mcp/status');
+        const result = await response.json();
+        
+        if (result.success) {
+            return result.data;
+        } else {
+            throw new Error(result.error);
+        }
+    } catch (error) {
+        console.error('获取MCP状态失败:', error);
+        return null;
+    }
+}
+
+async function analyzeMCPTools(query) {
+    try {
+        const response = await fetch('/api/mcp/analyze', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ query })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            return result.data.suggested_tools;
+        } else {
+            throw new Error(result.error);
+        }
+    } catch (error) {
+        console.error('分析MCP工具失败:', error);
+        return [];
+    }
+}
+
+async function executeMCPTools(query) {
+    try {
+        const response = await fetch('/api/mcp/execute', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ query })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            return result.data.results;
+        } else {
+            throw new Error(result.error);
+        }
+    } catch (error) {
+        console.error('执行MCP工具失败:', error);
+        return [];
+    }
+}
+
+async function getMCPHistory(limit = 10) {
+    try {
+        const response = await fetch(`/api/mcp/history?limit=${limit}`);
+        const result = await response.json();
+        
+        if (result.success) {
+            return result.data.history;
+        } else {
+            throw new Error(result.error);
+        }
+    } catch (error) {
+        console.error('获取MCP历史失败:', error);
+        return [];
+    }
+}
+
+// ============ 文本文件编辑功能 ============
+
+function toggleTextEdit(docId) {
+    const previewContent = document.getElementById('textPreviewContent');
+    const editContent = document.getElementById('textEditContent');
+    const editBtn = document.getElementById('editTextBtn');
+    const saveBtn = document.getElementById('saveTextBtn');
+    const cancelBtn = document.getElementById('cancelTextBtn');
+    
+    if (!previewContent || !editContent || !editBtn || !saveBtn || !cancelBtn) {
+        showError('编辑功能初始化失败');
+        return;
+    }
+    
+    // 切换到编辑模式
+    previewContent.classList.add('d-none');
+    editContent.classList.remove('d-none');
+    
+    // 切换按钮显示
+    editBtn.classList.add('d-none');
+    saveBtn.classList.remove('d-none');
+    cancelBtn.classList.remove('d-none');
+    
+    // 聚焦到编辑区域
+    editContent.focus();
+    
+    showInfo('进入编辑模式');
+}
+
+function cancelTextEdit() {
+    const previewContent = document.getElementById('textPreviewContent');
+    const editContent = document.getElementById('textEditContent');
+    const editBtn = document.getElementById('editTextBtn');
+    const saveBtn = document.getElementById('saveTextBtn');
+    const cancelBtn = document.getElementById('cancelTextBtn');
+    
+    if (!previewContent || !editContent || !editBtn || !saveBtn || !cancelBtn) {
+        return;
+    }
+    
+    // 恢复原始内容
+    if (window.originalTextContent !== undefined) {
+        editContent.value = window.originalTextContent;
+    }
+    
+    // 切换回预览模式
+    previewContent.classList.remove('d-none');
+    editContent.classList.add('d-none');
+    
+    // 切换按钮显示
+    editBtn.classList.remove('d-none');
+    saveBtn.classList.add('d-none');
+    cancelBtn.classList.add('d-none');
+    
+    showInfo('已取消编辑');
+}
+
+async function saveTextContent(docId) {
+    const editContent = document.getElementById('textEditContent');
+    const previewContent = document.getElementById('textPreviewContent');
+    const editBtn = document.getElementById('editTextBtn');
+    const saveBtn = document.getElementById('saveTextBtn');
+    const cancelBtn = document.getElementById('cancelTextBtn');
+    
+    if (!editContent || !previewContent || !editBtn || !saveBtn || !cancelBtn) {
+        showError('保存功能初始化失败');
+        return;
+    }
+    
+    const content = editContent.value;
+    
+    try {
+        // 禁用保存按钮防止重复提交
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<i class="bi bi-arrow-clockwise me-1 spin"></i>保存中...';
+        
+        const response = await fetch(`/api/preview/text/${docId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ content: content })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // 更新预览内容
+            const codeElement = previewContent.querySelector('code');
+            if (codeElement) {
+                codeElement.textContent = content;
+            }
+            
+            // 更新原始内容
+            window.originalTextContent = content;
+            
+            // 切换回预览模式
+            previewContent.classList.remove('d-none');
+            editContent.classList.add('d-none');
+            
+            // 切换按钮显示
+            editBtn.classList.remove('d-none');
+            saveBtn.classList.add('d-none');
+            cancelBtn.classList.add('d-none');
+            
+            // 更新文档信息中的文件大小
+            const docInfoSection = document.querySelector('.document-info-section');
+            if (docInfoSection && result.data.file_size !== undefined) {
+                const badges = docInfoSection.querySelectorAll('.badge');
+                badges.forEach(badge => {
+                    if (badge.textContent && (badge.textContent.includes('B') || badge.textContent.includes('KB') || badge.textContent.includes('MB'))) {
+                        const newSize = formatFileSize(result.data.file_size);
+                        badge.textContent = newSize;
+                    }
+                });
+            }
+            
+            showSuccess('文件保存成功');
+            
+            // 刷新文档树以更新文件大小显示
+            loadFileTree();
+            
+        } else {
+            throw new Error(result.error || '保存失败');
+        }
+        
+    } catch (error) {
+        console.error('保存文本文件失败:', error);
+        showError('保存失败: ' + error.message);
+    } finally {
+        // 恢复保存按钮状态
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = '<i class="bi bi-check-lg me-1"></i>保存';
+    }
 }

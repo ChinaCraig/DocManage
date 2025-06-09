@@ -18,6 +18,8 @@ import time
 
 db = SQLAlchemy()
 
+
+
 def cleanup_temp_images():
     """清理临时图片"""
     try:
@@ -58,6 +60,9 @@ def create_app(config_name=None):
     # 程序退出时清理临时图片
     atexit.register(cleanup_temp_images)
     
+    # 简化MCP服务已在模块导入时初始化
+    pass
+    
     # 注册蓝图
     from app.routes.document_routes import document_bp
     from app.routes.search_routes import search_bp
@@ -68,6 +73,7 @@ def create_app(config_name=None):
     from app.routes.config_routes import config_bp
     from app.routes.prompt_routes import prompt_routes
     from app.routes.llm_routes import llm_bp
+    from app.routes.mcp_routes import mcp_bp
     
     app.register_blueprint(document_bp, url_prefix='/api/documents')
     app.register_blueprint(search_bp, url_prefix='/api/search')
@@ -77,6 +83,7 @@ def create_app(config_name=None):
     app.register_blueprint(tag_bp, url_prefix='/api/tags')
     app.register_blueprint(config_bp, url_prefix='/api/config')
     app.register_blueprint(llm_bp, url_prefix='/api/llm')
+    app.register_blueprint(mcp_bp, url_prefix='/api/mcp')
     app.register_blueprint(prompt_routes)
     
     # 注册主页路由 - 重定向到语义搜索

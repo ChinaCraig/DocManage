@@ -4,7 +4,11 @@
 """
 import os
 import logging
+from dotenv import load_dotenv
 from app import create_app, db
+
+# 加载环境变量文件
+load_dotenv('config.env')
 
 def setup_logging():
     """设置日志"""
@@ -26,13 +30,18 @@ def main():
         # 创建Flask应用
         app = create_app()
         
+        # 从配置获取主机和端口
+        from config import Config
+        host = Config.APP_HOST
+        port = Config.APP_PORT
+        
         # 启动应用
         logger.info("启动文档管理系统...")
-        logger.info("访问地址: http://0.0.0.0:5001")
+        logger.info(f"访问地址: http://{host}:{port}")
         
         app.run(
-            host='0.0.0.0',
-            port=5001,
+            host=host,
+            port=port,
             debug=True
         )
         

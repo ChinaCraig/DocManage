@@ -153,4 +153,8 @@ class VectorServiceAdapter(BaseVectorizer):
     
     def get_supported_extensions(self) -> List[str]:
         """适配器支持所有类型"""
-        return [] 
+        return []
+    
+    def search(self, query_text: str, top_k: int = 10, document_id: str = None, min_score: float = 0.0) -> List[Dict[str, Any]]:
+        """搜索相似文档（兼容旧接口）"""
+        return self.search_similar(query_text, top_k, document_id, min_score) 

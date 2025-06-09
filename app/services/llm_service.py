@@ -272,8 +272,8 @@ class OpenAIClient(BaseLLMClient):
                     {"role": "system", "content": "你是文档问答助手，只基于提供的文档内容回答问题。"},
                     {"role": "user", "content": prompt}
                 ],
-                "max_tokens": 500,
-                "temperature": 0.7
+                "max_tokens": Config.LLM_MAX_TOKENS,
+                "temperature": Config.LLM_TEMPERATURE
             }
             
             response = self._make_request(data)

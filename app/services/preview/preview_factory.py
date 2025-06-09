@@ -3,6 +3,7 @@ from .word_preview import WordPreviewService
 from .excel_preview import ExcelPreviewService
 from .image_preview import ImagePreviewService
 from .video_preview import VideoPreviewService
+from .text_preview import TextPreviewService
 import logging
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,8 @@ class PreviewServiceFactory:
                     cls._services[file_type] = ImagePreviewService()
                 elif file_type == 'video':
                     cls._services[file_type] = VideoPreviewService()
+                elif file_type == 'text':
+                    cls._services[file_type] = TextPreviewService()
                 else:
                     raise ValueError(f"不支持的文件类型: {file_type}")
                     
@@ -54,7 +57,7 @@ class PreviewServiceFactory:
         Returns:
             list: 支持的文件类型列表
         """
-        return ['pdf', 'word', 'excel', 'image', 'video']
+        return ['pdf', 'word', 'excel', 'image', 'video', 'text']
     
     @classmethod
     def clear_cache(cls):
@@ -90,7 +93,20 @@ class PreviewServiceFactory:
             'mp4': 'video',
             'avi': 'video',
             'mov': 'video',
-            'wmv': 'video'
+            'wmv': 'video',
+            'txt': 'text',
+            'text': 'text',
+            'log': 'text',
+            'md': 'text',
+            'markdown': 'text',
+            'csv': 'text',
+            'json': 'text',
+            'xml': 'text',
+            'py': 'text',
+            'js': 'text',
+            'html': 'text',
+            'css': 'text',
+            'sql': 'text'
         }
         
         service_type = extension_mapping.get(ext)

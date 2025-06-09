@@ -4,6 +4,7 @@ import logging
 from typing import Dict, Any, Optional, List
 from string import Template
 import json
+from config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -205,7 +206,7 @@ class PromptService:
         return {
             'system_prompt': '你是问答助手',
             'user_prompt': f'问题：{query}\n文档：{context}\n回答：',
-            'parameters': {'max_tokens': 500, 'temperature': 0.7}
+                            'parameters': {'max_tokens': Config.LLM_MAX_TOKENS, 'temperature': Config.LLM_TEMPERATURE}
         }
 
 # 全局实例
