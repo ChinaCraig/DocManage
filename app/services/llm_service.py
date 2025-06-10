@@ -803,14 +803,15 @@ class LLMService:
 
 请严格按照以下JSON格式返回分析结果（不要添加markdown格式或其他文本）：
 {
-  "intent_type": "mcp_action|vector_search",
+  "intent_type": "mcp_action|vector_search|folder_analysis",
   "confidence": 0.0-1.0之间的数字,
-  "action_type": "create_file|create_folder|search_documents|other",
+  "action_type": "create_file|create_folder|search_documents|analyze_folder|other",
   "parameters": {
     "file_name": "如果是创建文件，提取文件名",
-    "folder_name": "如果是创建文件夹，提取文件夹名",
+    "folder_name": "如果是创建文件夹或分析文件夹，提取文件夹名",
     "parent_folder": "如果指定了父目录，提取父目录名",
-    "search_keywords": "如果是搜索，提取关键词"
+    "search_keywords": "如果是搜索，提取关键词",
+    "analysis_type": "如果是分析操作，提取分析类型（如：缺失内容、完整性检查等）"
   },
   "reasoning": "简要说明判断依据"
 }
@@ -818,12 +819,19 @@ class LLMService:
 意图分类说明：
 - mcp_action: 用户想要执行操作（如创建文件、创建文件夹等）
 - vector_search: 用户想要搜索或查找信息
+- folder_analysis: 用户想要分析文件夹内容完整性
 
 操作类型说明：
 - create_file: 创建文件（包含文件扩展名或明确说明是文件）
 - create_folder: 创建文件夹/目录
 - search_documents: 搜索文档内容
-- other: 其他操作"""
+- analyze_folder: 分析文件夹内容（检查缺失文件、内容完整性等）
+- other: 其他操作
+
+特别注意：
+1. 当用户询问"分析XX缺少哪些内容"、"检查XX文件夹"、"确认XX目录"等时，应识别为folder_analysis意图
+2. 文件夹分析关键词包括：分析、检查、确认、缺少、完整性、内容等
+3. 务必准确提取文件夹名称到parameters.folder_name字段中"""
 
             user_prompt = f"""请分析以下用户输入的意图：
 
@@ -886,13 +894,33 @@ class LLMService:
         """备用的基于关键词的意图分析"""
         query_lower = query.lower()
         
+        # 检测文件夹分析意图的关键词
+        analysis_keywords = ['分析', '检查', '确认', '对比', '比较', '缺少', '缺失', '完整性', '检验', '核查']
+        folder_keywords = ['文件夹', '目录', '文件夹']
+        
         # 检测搜索意图的关键词
         search_keywords = ['找', '搜索', '查找', '寻找', '在哪里', '哪里有', '搜', '查', '检索']
         
         # 文件扩展名
         file_extensions = ['.txt', '.doc', '.docx', '.pdf', '.xls', '.xlsx', '.jpg', '.png', '.mp4', '.md']
         
-        # 优先检测搜索意图
+        # 优先检测文件夹分析意图
+        has_analysis_keyword = any(keyword in query_lower for keyword in analysis_keywords)
+        has_folder_keyword = any(keyword in query_lower for keyword in folder_keywords)
+        
+        if has_analysis_keyword and has_folder_keyword:
+            return {
+                "intent_type": "folder_analysis",
+                "confidence": 0.9,
+                "action_type": "analyze_folder",
+                "parameters": {
+                    "folder_name": None,  # 需要进一步解析
+                    "analysis_type": "缺失内容分析"
+                },
+                "reasoning": "检测到分析和文件夹关键词（备用分析）"
+            }
+        
+        # 其次检测搜索意图
         if any(keyword in query_lower for keyword in search_keywords):
             return {
                 "intent_type": "vector_search",

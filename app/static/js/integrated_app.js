@@ -4087,6 +4087,11 @@ function formatAnalysisResults(data) {
     const result = data.analysis_result;
     const query = data.query;
     
+    // 检查是否是文件夹分析结果
+    if (data.search_type === 'folder_analysis') {
+        return formatFolderAnalysisResults(data);
+    }
+    
     let html = `<div class="analysis-result">`;
     
     // 显示分析查询
@@ -4313,6 +4318,239 @@ function formatAnalysisResults(data) {
     
     html += `</div>`;
     
+    return html;
+}
+
+// 文件夹分析结果格式化函数
+function formatFolderAnalysisResults(data) {
+    const result = data.analysis_result;
+    const query = data.query;
+    
+    let html = `<div class="folder-analysis-result">`;
+    
+    // 显示分析查询
+    html += `<div class="analysis-header">
+        <h4><i class="bi bi-folder-check text-primary"></i> 文件夹完整性分析</h4>
+        <p class="text-muted">查询：${escapeHtml(query)}</p>
+    </div>`;
+    
+    if (!result.success) {
+        html += `<div class="alert alert-warning">
+            <i class="bi bi-exclamation-triangle"></i>
+            ${escapeHtml(result.error || '分析失败')}
+        </div>`;
+        return html + '</div>';
+    }
+    
+    const folder = result.folder;
+    const comparison = result.comparison;
+    const expectations = result.expectations;
+    const aiSummary = result.ai_summary;
+    
+    // 显示文件夹基本信息
+    html += `<div class="card mb-3 border-primary">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">
+                <i class="bi bi-folder-fill"></i> 
+                <strong>${escapeHtml(folder.name)}</strong>
+                <span class="badge bg-light text-dark ms-2">
+                    完整度 ${(comparison.completion_rate || 0).toFixed(1)}%
+                </span>
+            </h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-8">
+                    <p class="mb-2"><strong>文件夹描述：</strong>
+                        ${folder.description ? escapeHtml(folder.description) : '<span class="text-muted">无描述</span>'}
+                    </p>
+                    <p class="mb-2"><strong>文件夹用途：</strong>
+                        ${expectations.folder_purpose ? escapeHtml(expectations.folder_purpose) : '<span class="text-muted">未识别</span>'}
+                    </p>
+                </div>
+                <div class="col-md-4">
+                    <p class="mb-2"><strong>当前文件：</strong><span class="badge bg-info">${comparison.total_current || 0}</span></p>
+                    <p class="mb-2"><strong>期望文件：</strong><span class="badge bg-secondary">${comparison.total_expected || 0}</span></p>
+                    ${folder.tags && folder.tags.length > 0 ? 
+                        `<p class="mb-0"><strong>标签：</strong>${folder.tags.map(tag => `<span class="badge me-1" style="background-color: ${tag.color}">${escapeHtml(tag.name)}</span>`).join('')}</p>` : 
+                        '<p class="mb-0"><strong>标签：</strong><span class="text-muted">无标签</span></p>'
+                    }
+                </div>
+            </div>
+        </div>
+    </div>`;
+    
+    // AI智能分析总结
+    if (aiSummary) {
+        html += `<div class="card mb-3 border-info">
+            <div class="card-header bg-info text-white">
+                <h6 class="mb-0"><i class="bi bi-robot"></i> AI智能分析</h6>
+            </div>
+            <div class="card-body">
+                <div class="ai-summary">${escapeHtml(aiSummary).replace(/\n/g, '<br>')}</div>
+            </div>
+        </div>`;
+    }
+    
+    // 统计信息卡片
+    html += `<div class="row mb-3">
+        <div class="col-md-3">
+            <div class="card text-center border-success">
+                <div class="card-body">
+                    <h3 class="text-success">${comparison.matched_count || 0}</h3>
+                    <small class="text-muted">已匹配文件</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center border-warning">
+                <div class="card-body">
+                    <h3 class="text-warning">${comparison.missing_count || 0}</h3>
+                    <small class="text-muted">缺失文件</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center border-info">
+                <div class="card-body">
+                    <h3 class="text-info">${comparison.extra_count || 0}</h3>
+                    <small class="text-muted">额外文件</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center border-primary">
+                <div class="card-body">
+                    <h3 class="text-primary">${(comparison.completion_rate || 0).toFixed(1)}%</h3>
+                    <small class="text-muted">完整度</small>
+                </div>
+            </div>
+        </div>
+    </div>`;
+    
+    // 已匹配的文件
+    if (comparison.matched_files && comparison.matched_files.length > 0) {
+        html += `<div class="card mb-3 border-success">
+            <div class="card-header bg-success text-white">
+                <h6 class="mb-0"><i class="bi bi-check-circle-fill"></i> 已存在文件 (${comparison.matched_files.length})</h6>
+            </div>
+            <div class="card-body">
+                <div class="row">`;
+        
+        comparison.matched_files.forEach((match, index) => {
+            const current = match.current;
+            const expected = match.expected;
+            const fileIcon = getFileIcon(current.file_type);
+            
+            html += `
+                <div class="col-md-6 mb-2">
+                    <div class="d-flex align-items-center">
+                        <i class="bi ${fileIcon} text-success me-2"></i>
+                        <div class="flex-grow-1">
+                            <div class="fw-bold text-truncate">${escapeHtml(current.name)}</div>
+                            <small class="text-muted">
+                                ${current.file_type ? `${current.file_type.toUpperCase()} • ` : ''}
+                                ${expected.priority ? `${expected.priority}优先级` : ''}
+                            </small>
+                        </div>
+                        <span class="badge bg-success ms-2">✓</span>
+                    </div>
+                </div>
+            `;
+        });
+        
+        html += `</div></div></div>`;
+    }
+    
+    // 缺失的文件
+    if (comparison.missing_files && comparison.missing_files.length > 0) {
+        html += `<div class="card mb-3 border-warning">
+            <div class="card-header bg-warning text-dark">
+                <h6 class="mb-0"><i class="bi bi-exclamation-triangle-fill"></i> 缺失文件 (${comparison.missing_files.length})</h6>
+            </div>
+            <div class="card-body">
+                <div class="row">`;
+        
+        comparison.missing_files.forEach((missing, index) => {
+            const priorityClass = missing.priority === 'high' ? 'danger' : 
+                                 missing.priority === 'medium' ? 'warning' : 'secondary';
+            const priorityIcon = missing.priority === 'high' ? 'exclamation-circle-fill' : 
+                                missing.priority === 'medium' ? 'exclamation-triangle-fill' : 'info-circle-fill';
+            
+            html += `
+                <div class="col-md-12 mb-3">
+                    <div class="card border-${priorityClass}">
+                        <div class="card-body">
+                            <div class="d-flex align-items-start">
+                                <i class="bi bi-${priorityIcon} text-${priorityClass} me-2 mt-1"></i>
+                                <div class="flex-grow-1">
+                                    <h6 class="mb-1">${escapeHtml(missing.name)}</h6>
+                                    <p class="mb-1 text-muted small">${escapeHtml(missing.description || '')}</p>
+                                    ${missing.reason ? `<p class="mb-0 text-muted small"><strong>原因：</strong>${escapeHtml(missing.reason)}</p>` : ''}
+                                </div>
+                                <span class="badge bg-${priorityClass}">${missing.priority || 'unknown'}优先级</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        
+        html += `</div></div></div>`;
+    }
+    
+    // 额外的文件
+    if (comparison.extra_files && comparison.extra_files.length > 0) {
+        html += `<div class="card mb-3 border-info">
+            <div class="card-header bg-info text-white">
+                <h6 class="mb-0"><i class="bi bi-plus-circle-fill"></i> 额外文件 (${comparison.extra_files.length})</h6>
+            </div>
+            <div class="card-body">
+                <div class="row">`;
+        
+        comparison.extra_files.forEach((extra, index) => {
+            const fileIcon = getFileIcon(extra.file_type);
+            
+            html += `
+                <div class="col-md-6 mb-2">
+                    <div class="d-flex align-items-center">
+                        <i class="bi ${fileIcon} text-info me-2"></i>
+                        <div class="flex-grow-1">
+                            <div class="fw-bold text-truncate">${escapeHtml(extra.name)}</div>
+                            <small class="text-muted">
+                                ${extra.file_type ? `${extra.file_type.toUpperCase()}` : ''}
+                                ${extra.description ? ` • ${extra.description}` : ''}
+                            </small>
+                        </div>
+                        <span class="badge bg-info ms-2">+</span>
+                    </div>
+                </div>
+            `;
+        });
+        
+        html += `</div></div></div>`;
+    }
+    
+    // 组织建议
+    if (expectations.organization_suggestions && expectations.organization_suggestions.length > 0) {
+        html += `<div class="card mb-3 border-success">
+            <div class="card-header bg-success text-white">
+                <h6 class="mb-0"><i class="bi bi-lightbulb-fill"></i> 组织建议</h6>
+            </div>
+            <div class="card-body">
+                <ol class="suggestion-list">`;
+        
+        expectations.organization_suggestions.forEach(suggestion => {
+            html += `<li class="suggestion-item mb-2">
+                <i class="bi bi-arrow-right text-primary"></i>
+                <span class="text-break">${escapeHtml(suggestion)}</span>
+            </li>`;
+        });
+        
+        html += `</ol></div></div>`;
+    }
+    
+    html += '</div>';
     return html;
 }
 

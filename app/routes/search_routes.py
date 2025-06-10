@@ -98,8 +98,52 @@ def semantic_search():
                 intent_analysis = LLMService.analyze_user_intent(query_text, llm_model)
                 logger.info(f"LLM意图分析结果: {intent_analysis}")
                 
-                # 根据LLM分析结果决定是否执行MCP操作
-                if (intent_analysis.get('intent_type') == 'mcp_action' and 
+                # 根据LLM分析结果决定是否执行特殊操作
+                if (intent_analysis.get('intent_type') == 'folder_analysis' and 
+                    intent_analysis.get('confidence', 0) > 0.6 and
+                    intent_analysis.get('action_type') == 'analyze_folder'):
+                    
+                    logger.info(f"LLM分析确认为文件夹分析操作，跳过语义搜索: {query_text}")
+                    skip_search = True
+                    
+                    # 执行文件夹分析
+                    from app.services.folder_analysis_service import FolderAnalysisService
+                    
+                    try:
+                        analysis_result = FolderAnalysisService.analyze_folder_completeness(query_text, llm_model, intent_analysis)
+                        logger.info(f"文件夹分析完成")
+                        
+                        # 构建分析响应
+                        data = {
+                            'query': query_text,
+                            'is_analysis': True,
+                            'analysis_result': analysis_result,
+                            'search_type': 'folder_analysis'
+                        }
+                        
+                        # 添加意图分析结果
+                        if intent_analysis:
+                            data['intent_analysis'] = {
+                                'intent_type': intent_analysis.get('intent_type'),
+                                'confidence': intent_analysis.get('confidence'),
+                                'action_type': intent_analysis.get('action_type'),
+                                'reasoning': intent_analysis.get('reasoning'),
+                                'used_llm': True
+                            }
+                        
+                        return jsonify({
+                            'success': True,
+                            'data': data
+                        })
+                        
+                    except Exception as analysis_error:
+                        logger.error(f"文件夹分析失败: {analysis_error}")
+                        return jsonify({
+                            'success': False,
+                            'error': f"文件夹分析失败: {str(analysis_error)}"
+                        }), 500
+                
+                elif (intent_analysis.get('intent_type') == 'mcp_action' and 
                     intent_analysis.get('confidence', 0) > 0.6 and
                     intent_analysis.get('action_type') in ['create_file', 'create_folder']):
                     
@@ -529,8 +573,52 @@ def hybrid_search():
                 intent_analysis = LLMService.analyze_user_intent(query_text, llm_model)
                 logger.info(f"混合搜索LLM意图分析结果: {intent_analysis}")
                 
-                # 根据LLM分析结果决定是否执行MCP操作
-                if (intent_analysis.get('intent_type') == 'mcp_action' and 
+                # 根据LLM分析结果决定是否执行特殊操作
+                if (intent_analysis.get('intent_type') == 'folder_analysis' and 
+                    intent_analysis.get('confidence', 0) > 0.6 and
+                    intent_analysis.get('action_type') == 'analyze_folder'):
+                    
+                    logger.info(f"混合搜索LLM分析确认为文件夹分析操作，跳过搜索: {query_text}")
+                    skip_search = True
+                    
+                    # 执行文件夹分析
+                    from app.services.folder_analysis_service import FolderAnalysisService
+                    
+                    try:
+                        analysis_result = FolderAnalysisService.analyze_folder_completeness(query_text, llm_model, intent_analysis)
+                        logger.info(f"混合搜索文件夹分析完成")
+                        
+                        # 构建分析响应
+                        response_data = {
+                            'query': query_text,
+                            'is_analysis': True,
+                            'analysis_result': analysis_result,
+                            'search_type': 'folder_analysis'
+                        }
+                        
+                        # 添加意图分析结果
+                        if intent_analysis:
+                            response_data['intent_analysis'] = {
+                                'intent_type': intent_analysis.get('intent_type'),
+                                'confidence': intent_analysis.get('confidence'),
+                                'action_type': intent_analysis.get('action_type'),
+                                'reasoning': intent_analysis.get('reasoning'),
+                                'used_llm': True
+                            }
+                        
+                        return jsonify({
+                            'success': True,
+                            'data': response_data
+                        })
+                        
+                    except Exception as analysis_error:
+                        logger.error(f"混合搜索文件夹分析失败: {analysis_error}")
+                        return jsonify({
+                            'success': False,
+                            'error': f"文件夹分析失败: {str(analysis_error)}"
+                        }), 500
+                
+                elif (intent_analysis.get('intent_type') == 'mcp_action' and 
                     intent_analysis.get('confidence', 0) > 0.6 and
                     intent_analysis.get('action_type') in ['create_file', 'create_folder']):
                     
@@ -563,6 +651,46 @@ def hybrid_search():
                 logger.error(f"混合搜索LLM意图分析失败，回退到关键词分析: {e}")
                 # 回退到原来的关键词检测逻辑
                 query_lower = query_text.lower()
+                
+                # 检测文件夹分析意图
+                analysis_keywords = ['分析', '检查', '确认', '对比', '比较', '缺少', '缺失', '完整性', '检验', '核查']
+                folder_keywords = ['文件夹', '目录']
+                
+                analysis_detected = any(keyword in query_lower for keyword in analysis_keywords)
+                folder_detected = any(keyword in query_lower for keyword in folder_keywords)
+                
+                if analysis_detected and folder_detected:
+                    logger.info(f"混合搜索关键词检测到文件夹分析意图，跳过搜索: {query_text}")
+                    skip_search = True
+                    
+                    # 执行文件夹分析
+                    from app.services.folder_analysis_service import FolderAnalysisService
+                    
+                    try:
+                        analysis_result = FolderAnalysisService.analyze_folder_completeness(query_text, llm_model)
+                        logger.info(f"混合搜索关键词检测文件夹分析完成")
+                        
+                        # 构建分析响应
+                        response_data = {
+                            'query': query_text,
+                            'is_analysis': True,
+                            'analysis_result': analysis_result,
+                            'search_type': 'folder_analysis'
+                        }
+                        
+                        return jsonify({
+                            'success': True,
+                            'data': response_data
+                        })
+                        
+                    except Exception as analysis_error:
+                        logger.error(f"混合搜索关键词检测文件夹分析失败: {analysis_error}")
+                        return jsonify({
+                            'success': False,
+                            'error': f"文件夹分析失败: {str(analysis_error)}"
+                        }), 500
+                
+                # 检测MCP操作意图
                 create_folder_keywords = ['创建', '新建', '文件夹', '目录', '建立']
                 create_file_keywords = ['创建', '新建', '文件', '文档']
                 file_extensions = ['.txt', '.doc', '.docx', '.pdf', '.xls', '.xlsx', '.jpg', '.png', '.mp4', '.md']
