@@ -2950,9 +2950,49 @@ function formatFileSearchResults(data, query) {
         </div>`;
     }
     
-    // 优先使用file_results，回退到results
-    const fileResults = data.file_results || data.results || [];
-    const resultCount = data.total_files || fileResults.length;
+    // 兼容不同的搜索结果格式
+    let fileResults = [];
+    
+    if (data.file_results) {
+        // 混合搜索的文件级别结果
+        fileResults = data.file_results;
+    } else if (data.results && Array.isArray(data.results)) {
+        // 语义搜索的结果，需要转换为文件级别格式
+        const documentMap = {};
+        
+        // 按文档ID分组结果
+        data.results.forEach(result => {
+            const docId = result.document ? result.document.id : result.id;
+            if (!documentMap[docId]) {
+                documentMap[docId] = {
+                    document: result.document || result,
+                    score: result.score || 0,
+                    chunks: [],
+                    chunk_count: 0,
+                    search_type: 'semantic'
+                };
+            }
+            
+            // 添加分块信息
+            if (result.text) {
+                documentMap[docId].chunks.push({
+                    text: result.text,
+                    chunk_index: result.chunk_index || 0,
+                    score: result.score || 0
+                });
+                documentMap[docId].chunk_count++;
+            }
+            
+            // 保持最高分数
+            if (result.score > documentMap[docId].score) {
+                documentMap[docId].score = result.score;
+            }
+        });
+        
+        fileResults = Object.values(documentMap);
+    }
+    
+    const resultCount = data.total_files || data.total_results || fileResults.length;
     
     // 如果没有搜索结果，返回空字符串
     if (fileResults.length === 0) {

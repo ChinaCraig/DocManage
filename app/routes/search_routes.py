@@ -81,72 +81,256 @@ def semantic_search():
                 'error': '查询内容不能为空'
             }), 400
         
-        logger.info(f"接收到语义搜索请求: {query_text}, top_k: {top_k}, enable_mcp: {enable_mcp}")
+        llm_model = data.get('llm_model')  # 获取LLM模型参数
+        
+        logger.info(f"接收到语义搜索请求: {query_text}, top_k: {top_k}, enable_mcp: {enable_mcp}, llm_model: {llm_model}")
         
         # 初始化结果
         search_results = []
         mcp_tool_results = []
-        skip_search = False  # 是否跳过语义搜索
+        skip_search = False
+        intent_analysis = None
         
-        # 优先检测MCP操作意图
-        if Config.MCP_CONFIG.get('enabled', False):
-            query_lower = query_text.lower()
-            
-            # 检测文件操作意图
-            create_folder_keywords = ['创建', '新建', '文件夹', '目录', '建立']
-            create_file_keywords = ['创建', '新建', '文件', '文档']
-            file_extensions = ['.txt', '.doc', '.docx', '.pdf', '.xls', '.xlsx', '.jpg', '.png', '.mp4', '.md']
-            
-            create_folder_detected = any(keyword in query_lower for keyword in create_folder_keywords)
-            create_file_detected = (any(keyword in query_lower for keyword in create_file_keywords) and 
-                                  not create_folder_detected) or any(ext in query_lower for ext in file_extensions)
-            
-            if create_folder_detected or create_file_detected:
-                logger.info(f"优先检测到文件操作意图，跳过语义搜索: {query_text}")
-                skip_search = True  # 跳过语义搜索
+        # 使用LLM进行智能意图分析
+        if Config.MCP_CONFIG.get('enabled', False) and llm_model:
+            try:
+                from app.services.llm_service import LLMService
+                intent_analysis = LLMService.analyze_user_intent(query_text, llm_model)
+                logger.info(f"LLM意图分析结果: {intent_analysis}")
                 
-                # 使用简化的MCP服务直接执行操作
-                from app.services.mcp_service_simple import simple_mcp_service
+                # 根据LLM分析结果决定是否执行MCP操作
+                if (intent_analysis.get('intent_type') == 'mcp_action' and 
+                    intent_analysis.get('confidence', 0) > 0.6 and
+                    intent_analysis.get('action_type') in ['create_file', 'create_folder']):
+                    
+                    logger.info(f"LLM分析确认为MCP操作，跳过语义搜索: {query_text}")
+                    skip_search = True
+                    
+                    # 使用简化的MCP服务执行操作
+                    from app.services.mcp_service_simple import simple_mcp_service
+                    
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        mcp_tool_results = loop.run_until_complete(
+                            simple_mcp_service.execute_tool_sequence(query_text)
+                        )
+                        logger.info(f"MCP工具执行完成，共 {len(mcp_tool_results)} 个步骤")
+                    except Exception as mcp_error:
+                        logger.error(f"MCP工具执行失败: {mcp_error}")
+                        mcp_tool_results = [{
+                            'tool_name': 'error',
+                            'arguments': {},
+                            'result': None,
+                            'error': f"MCP工具执行失败: {str(mcp_error)}",
+                            'timestamp': time.time()
+                        }]
+                    finally:
+                        loop.close()
+                        
+            except Exception as e:
+                logger.error(f"LLM意图分析失败，回退到关键词分析: {e}")
+                # 回退到原来的关键词检测逻辑
+                query_lower = query_text.lower()
+                create_folder_keywords = ['创建', '新建', '文件夹', '目录', '建立']
+                create_file_keywords = ['创建', '新建', '文件', '文档']
+                file_extensions = ['.txt', '.doc', '.docx', '.pdf', '.xls', '.xlsx', '.jpg', '.png', '.mp4', '.md']
                 
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                try:
-                    # 执行简化MCP工具序列
-                    mcp_tool_results = loop.run_until_complete(
-                        simple_mcp_service.execute_tool_sequence(query_text)
-                    )
-                    logger.info(f"MCP工具执行完成，共 {len(mcp_tool_results)} 个步骤")
-                except Exception as mcp_error:
-                    logger.error(f"MCP工具执行失败: {mcp_error}")
-                    mcp_tool_results = [{
-                        'tool_name': 'error',
-                        'arguments': {},
-                        'result': None,
-                        'error': f"MCP工具执行失败: {str(mcp_error)}",
-                        'timestamp': time.time()
-                    }]
-                finally:
-                    loop.close()
+                create_folder_detected = any(keyword in query_lower for keyword in create_folder_keywords)
+                create_file_detected = (any(keyword in query_lower for keyword in create_file_keywords) and 
+                                      not create_folder_detected) or any(ext in query_lower for ext in file_extensions)
+                
+                if create_folder_detected or create_file_detected:
+                    logger.info(f"关键词检测到文件操作意图，跳过语义搜索: {query_text}")
+                    skip_search = True
+                    
+                    from app.services.mcp_service_simple import simple_mcp_service
+                    
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        mcp_tool_results = loop.run_until_complete(
+                            simple_mcp_service.execute_tool_sequence(query_text)
+                        )
+                        logger.info(f"MCP工具执行完成，共 {len(mcp_tool_results)} 个步骤")
+                    except Exception as mcp_error:
+                        logger.error(f"MCP工具执行失败: {mcp_error}")
+                        mcp_tool_results = [{
+                            'tool_name': 'error',
+                            'arguments': {},
+                            'result': None,
+                            'error': f"MCP工具执行失败: {str(mcp_error)}",
+                            'timestamp': time.time()
+                        }]
+                    finally:
+                        loop.close()
         
         # 只有在没有MCP操作时才执行语义搜索
         if not skip_search:
             try:
+                # 进行关键词提取以优化搜索
+                keyword_extraction = None
+                search_query = query_text  # 默认使用原查询
+                
+                if llm_model:
+                    try:
+                        keyword_extraction = LLMService.extract_search_keywords(query_text, llm_model)
+                        search_query = keyword_extraction.get('optimized_query', query_text)
+                        logger.info(f"关键词提取完成 - 原查询: {query_text}, 优化查询: {search_query}")
+                    except Exception as e:
+                        logger.warning(f"关键词提取失败，使用原查询: {e}")
+                        search_query = query_text
+                
+                # 设置合理的相似度阈值（避免返回太多低质量结果）
+                min_score = 0.2  # 语义搜索的默认最低相似度阈值
+                
+                # 对人名等专有名词查询适当降低阈值
+                if len(search_query.strip().split()) <= 2 and not any(word in search_query.lower() for word in ['创建', '新建', '帮我', '找到', '搜索']):
+                    min_score = 0.15  # 简短查询（如人名）降低阈值
+                    logger.info(f"检测到简短查询，降低相似度阈值到: {min_score}")
+                
+                # 使用优化后的查询进行向量搜索
                 vector_service = VectorServiceAdapter()
-                search_results = vector_service.search(query_text, top_k=top_k)
+                raw_results = vector_service.search_similar(
+                    query_text=search_query, 
+                    top_k=top_k,
+                    min_score=min_score
+                )
+                
+                # 补充文档信息，确保前端能正确显示结果
+                search_results = []
+                for result in raw_results:
+                    document_id = result.get('document_id')
+                    if document_id:
+                        document = DocumentNode.query.get(document_id)
+                        if document and not document.is_deleted:
+                            # 为每个结果添加完整的document对象
+                            enriched_result = {
+                                'id': result.get('chunk_id', ''),
+                                'document_id': document_id,
+                                'chunk_id': result.get('chunk_id', ''),
+                                'text': result.get('text', ''),
+                                'score': result.get('score', 0),
+                                'document': {
+                                    'id': document.id,
+                                    'name': document.name,
+                                    'file_type': document.file_type,
+                                    'file_size': document.file_size,
+                                    'created_at': document.created_at.isoformat() if document.created_at else None,
+                                    'description': document.description
+                                }
+                            }
+                            search_results.append(enriched_result)
+                
                 logger.info(f"语义搜索完成，找到 {len(search_results)} 个结果")
+                
+                # 如果有LLM模型，进行结果聚合和智能分析
+                file_results = []
+                llm_answer = None
+                reranked = False
+                
+                if llm_model and search_results:
+                    try:
+                        # 将chunk级别结果聚合为文件级别（复用混合搜索的聚合逻辑）
+                        file_results = aggregate_results_by_file(search_results)
+                        
+                        # LLM结果重排序
+                        if file_results:
+                            try:
+                                file_results = LLMService.rerank_file_results(query_text, file_results, llm_model)
+                                reranked = True
+                                logger.info(f"语义搜索LLM文件结果重排序完成 - 处理了 {len(file_results)} 个文件")
+                            except Exception as e:
+                                logger.warning(f"语义搜索LLM结果重排序失败: {e}")
+                        
+                        # LLM智能答案生成
+                        if file_results:
+                            try:
+                                # 准备上下文文本
+                                context_texts = []
+                                for file_result in file_results[:5]:  # 只使用前5个文件结果生成答案
+                                    doc_name = file_result['document']['name']
+                                    # 合并该文件的所有匹配片段
+                                    chunks = [chunk['text'] for chunk in file_result['chunks'][:3]]  # 每个文件最多3个片段
+                                    combined_text = '\n'.join(chunks)
+                                    context_texts.append(f"文档《{doc_name}》：{combined_text}")
+                                
+                                context = '\n\n'.join(context_texts)
+                                llm_answer = LLMService.generate_answer(
+                                    query_text, 
+                                    context, 
+                                    llm_model=llm_model,
+                                    scenario=None,  # 让系统自动分析
+                                    style=None      # 让系统自动推荐
+                                )
+                                logger.info(f"语义搜索智能LLM答案生成完成 - 查询: {query_text}")
+                            except Exception as e:
+                                logger.warning(f"语义搜索LLM答案生成失败: {e}")
+                    except Exception as e:
+                        logger.warning(f"语义搜索LLM处理失败: {e}")
+                
             except Exception as e:
                 logger.error(f"语义搜索失败: {str(e)}")
                 search_results = []
+                keyword_extraction = None
+                file_results = []
+                llm_answer = None
+                reranked = False
         
 
         
-        # 构建响应数据（与混合搜索格式保持一致）
+        # 构建响应数据
         data = {
             'query': query_text,
             'results': search_results,
             'total_results': len(search_results),
             'search_type': 'semantic'
         }
+        
+        # 添加搜索配置信息
+        if not skip_search and 'min_score' in locals():
+            data['min_score'] = min_score
+        
+        # 如果进行了文件级别聚合，也返回文件结果（与混合搜索保持一致）
+        if not skip_search and 'file_results' in locals() and file_results:
+            data['file_results'] = file_results
+            data['total_files'] = len(file_results)
+        
+        # 添加LLM处理信息
+        if llm_model:
+            data['llm_info'] = {
+                'used': True,
+                'model': llm_model,
+                'original_query': query_text,
+                'optimized_query': search_query if not skip_search and 'search_query' in locals() else query_text,
+                'query_optimized': (search_query != query_text) if not skip_search and 'search_query' in locals() else False,
+                'reranked': reranked if 'reranked' in locals() else False,
+                'answer': llm_answer if 'llm_answer' in locals() else None
+            }
+        else:
+            data['llm_info'] = {
+                'used': False
+            }
+        
+        # 添加意图分析结果
+        if intent_analysis:
+            data['intent_analysis'] = {
+                'intent_type': intent_analysis.get('intent_type'),
+                'confidence': intent_analysis.get('confidence'),
+                'action_type': intent_analysis.get('action_type'),
+                'reasoning': intent_analysis.get('reasoning'),
+                'used_llm': True
+            }
+        
+        # 添加关键词提取结果
+        if not skip_search and 'keyword_extraction' in locals() and keyword_extraction:
+            data['keyword_extraction'] = {
+                'original_query': keyword_extraction.get('original_query'),
+                'keywords': keyword_extraction.get('keywords'),
+                'optimized_query': keyword_extraction.get('optimized_query'),
+                'reasoning': keyword_extraction.get('reasoning'),
+                'used_llm': keyword_extraction.get('used_llm', False)
+            }
         
         # 如果有MCP工具结果，添加到响应中
         if mcp_tool_results:
@@ -335,64 +519,98 @@ def hybrid_search():
         combined_results = []
         file_results = []
         mcp_tool_results = []
-        skip_search = False  # 是否跳过搜索
+        skip_search = False
+        intent_analysis = None
         
-        # 优先检测MCP操作意图
-        if Config.MCP_CONFIG.get('enabled', False):
-            query_lower = query_text.lower()
-            
-            # 检测文件操作意图
-            create_folder_keywords = ['创建', '新建', '文件夹', '目录', '建立']
-            create_file_keywords = ['创建', '新建', '文件', '文档']
-            file_extensions = ['.txt', '.doc', '.docx', '.pdf', '.xls', '.xlsx', '.jpg', '.png', '.mp4', '.md']
-            
-            create_folder_detected = any(keyword in query_lower for keyword in create_folder_keywords)
-            create_file_detected = (any(keyword in query_lower for keyword in create_file_keywords) and 
-                                  not create_folder_detected) or any(ext in query_lower for ext in file_extensions)
-            
-            if create_folder_detected or create_file_detected:
-                logger.info(f"混合搜索优先检测到文件操作意图，跳过搜索: {query_text}")
-                skip_search = True  # 跳过搜索
+        # 使用LLM进行智能意图分析
+        if Config.MCP_CONFIG.get('enabled', False) and llm_model:
+            try:
+                from app.services.llm_service import LLMService
+                intent_analysis = LLMService.analyze_user_intent(query_text, llm_model)
+                logger.info(f"混合搜索LLM意图分析结果: {intent_analysis}")
                 
-                # 使用简化的MCP服务直接执行操作
-                from app.services.mcp_service_simple import simple_mcp_service
+                # 根据LLM分析结果决定是否执行MCP操作
+                if (intent_analysis.get('intent_type') == 'mcp_action' and 
+                    intent_analysis.get('confidence', 0) > 0.6 and
+                    intent_analysis.get('action_type') in ['create_file', 'create_folder']):
+                    
+                    logger.info(f"混合搜索LLM分析确认为MCP操作，跳过搜索: {query_text}")
+                    skip_search = True
+                    
+                    # 使用简化的MCP服务执行操作
+                    from app.services.mcp_service_simple import simple_mcp_service
+                    
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        mcp_tool_results = loop.run_until_complete(
+                            simple_mcp_service.execute_tool_sequence(query_text)
+                        )
+                        logger.info(f"混合搜索MCP工具执行完成，共 {len(mcp_tool_results)} 个步骤")
+                    except Exception as mcp_error:
+                        logger.error(f"混合搜索MCP工具执行失败: {mcp_error}")
+                        mcp_tool_results = [{
+                            'tool_name': 'error',
+                            'arguments': {},
+                            'result': None,
+                            'error': f"MCP工具执行失败: {str(mcp_error)}",
+                            'timestamp': time.time()
+                        }]
+                    finally:
+                        loop.close()
+                        
+            except Exception as e:
+                logger.error(f"混合搜索LLM意图分析失败，回退到关键词分析: {e}")
+                # 回退到原来的关键词检测逻辑
+                query_lower = query_text.lower()
+                create_folder_keywords = ['创建', '新建', '文件夹', '目录', '建立']
+                create_file_keywords = ['创建', '新建', '文件', '文档']
+                file_extensions = ['.txt', '.doc', '.docx', '.pdf', '.xls', '.xlsx', '.jpg', '.png', '.mp4', '.md']
                 
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                try:
-                    # 执行简化MCP工具序列
-                    mcp_tool_results = loop.run_until_complete(
-                        simple_mcp_service.execute_tool_sequence(query_text)
-                    )
-                    logger.info(f"混合搜索MCP工具执行完成，共 {len(mcp_tool_results)} 个步骤")
-                except Exception as mcp_error:
-                    logger.error(f"混合搜索MCP工具执行失败: {mcp_error}")
-                    mcp_tool_results = [{
-                        'tool_name': 'error',
-                        'arguments': {},
-                        'result': None,
-                        'error': f"MCP工具执行失败: {str(mcp_error)}",
-                        'timestamp': time.time()
-                    }]
-                finally:
-                    loop.close()
+                create_folder_detected = any(keyword in query_lower for keyword in create_folder_keywords)
+                create_file_detected = (any(keyword in query_lower for keyword in create_file_keywords) and 
+                                      not create_folder_detected) or any(ext in query_lower for ext in file_extensions)
+                
+                if create_folder_detected or create_file_detected:
+                    logger.info(f"混合搜索关键词检测到文件操作意图，跳过搜索: {query_text}")
+                    skip_search = True
+                    
+                    from app.services.mcp_service_simple import simple_mcp_service
+                    
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        mcp_tool_results = loop.run_until_complete(
+                            simple_mcp_service.execute_tool_sequence(query_text)
+                        )
+                        logger.info(f"混合搜索MCP工具执行完成，共 {len(mcp_tool_results)} 个步骤")
+                    except Exception as mcp_error:
+                        logger.error(f"混合搜索MCP工具执行失败: {mcp_error}")
+                        mcp_tool_results = [{
+                            'tool_name': 'error',
+                            'arguments': {},
+                            'result': None,
+                            'error': f"MCP工具执行失败: {str(mcp_error)}",
+                            'timestamp': time.time()
+                        }]
+                    finally:
+                        loop.close()
         
         # 只有在没有MCP操作时才执行搜索
         if not skip_search:
-            # LLM查询优化（使用智能提示词系统）
+            # 进行关键词提取以优化搜索
             original_query = query_text
             optimized_query = query_text
+            keyword_extraction = None
+            
             if use_llm and llm_model:
                 try:
-                    optimized_query = LLMService.optimize_query(
-                        query_text, 
-                        llm_model=llm_model,
-                        scenario=None,  # 让系统自动分析
-                        template=None   # 让系统自动推荐
-                    )
-                    logger.info(f"混合搜索智能LLM查询优化 - 原查询: {query_text}, 优化后: {optimized_query}")
+                    # 使用专门的关键词提取功能
+                    keyword_extraction = LLMService.extract_search_keywords(query_text, llm_model)
+                    optimized_query = keyword_extraction.get('optimized_query', query_text)
+                    logger.info(f"混合搜索关键词提取完成 - 原查询: {query_text}, 优化查询: {optimized_query}")
                 except Exception as e:
-                    logger.warning(f"混合搜索LLM查询优化失败: {e}")
+                    logger.warning(f"混合搜索关键词提取失败，使用原查询: {e}")
                     optimized_query = query_text
             
             # 设置相似度阈值（针对银行等特定查询提高阈值）
@@ -483,22 +701,47 @@ def hybrid_search():
         response_data = {
             'query': query_text,
             'similarity_level': similarity_level,
-            'min_score': min_score,
-            'semantic_count': len(semantic_results),
-            'keyword_count': len(keyword_results),
             'total_files': len(file_results),
             'file_results': file_results,
             'search_type': 'hybrid'
         }
+        
+        # 只在执行了搜索时才添加这些信息
+        if not skip_search:
+            response_data.update({
+                'min_score': min_score,
+                'semantic_count': len(semantic_results),
+                'keyword_count': len(keyword_results)
+            })
+        
+        # 添加意图分析结果
+        if intent_analysis:
+            response_data['intent_analysis'] = {
+                'intent_type': intent_analysis.get('intent_type'),
+                'confidence': intent_analysis.get('confidence'),
+                'action_type': intent_analysis.get('action_type'),
+                'reasoning': intent_analysis.get('reasoning'),
+                'used_llm': True
+            }
+        
+        # 添加关键词提取结果
+        if not skip_search and 'keyword_extraction' in locals() and keyword_extraction:
+            response_data['keyword_extraction'] = {
+                'original_query': keyword_extraction.get('original_query'),
+                'keywords': keyword_extraction.get('keywords'),
+                'optimized_query': keyword_extraction.get('optimized_query'),
+                'reasoning': keyword_extraction.get('reasoning'),
+                'used_llm': keyword_extraction.get('used_llm', False)
+            }
         
         # 添加LLM处理信息
         if use_llm:
             response_data['llm_info'] = {
                 'used': True,
                 'model': llm_model,
-                'original_query': original_query,
-                'optimized_query': optimized_query,
-                'query_optimized': optimized_query != original_query,
+                'original_query': original_query if not skip_search else query_text,
+                'optimized_query': optimized_query if not skip_search else query_text,
+                'query_optimized': (optimized_query != original_query) if not skip_search else False,
                 'reranked': reranked,
                 'answer': llm_answer
             }

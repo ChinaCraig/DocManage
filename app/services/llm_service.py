@@ -782,4 +782,353 @@ class LLMService:
                 
         except Exception as e:
             logger.error(f"文档结构分析失败: {e}")
-            return None 
+            return None
+    
+    @staticmethod
+    def analyze_user_intent(query: str, llm_model: str = None) -> Dict[str, Any]:
+        """
+        使用LLM分析用户输入的意图，判断是MCP调用还是向量库检索
+        """
+        if not llm_model:
+            # 如果没有指定模型，使用默认配置
+            llm_model = f"{Config.DEFAULT_LLM_PROVIDER}:{Config.DEFAULT_LLM_MODEL}"
+        
+        client = LLMClientFactory.create_client(llm_model)
+        if not client:
+            logger.warning(f"无法创建LLM客户端: {llm_model}，回退到关键词分析")
+            return LLMService._fallback_intent_analysis(query)
+        
+        try:
+            system_prompt = """你是一个智能意图分析助手。你需要分析用户的输入，判断用户想要执行什么操作。
+
+请严格按照以下JSON格式返回分析结果（不要添加markdown格式或其他文本）：
+{
+  "intent_type": "mcp_action|vector_search",
+  "confidence": 0.0-1.0之间的数字,
+  "action_type": "create_file|create_folder|search_documents|other",
+  "parameters": {
+    "file_name": "如果是创建文件，提取文件名",
+    "folder_name": "如果是创建文件夹，提取文件夹名",
+    "parent_folder": "如果指定了父目录，提取父目录名",
+    "search_keywords": "如果是搜索，提取关键词"
+  },
+  "reasoning": "简要说明判断依据"
+}
+
+意图分类说明：
+- mcp_action: 用户想要执行操作（如创建文件、创建文件夹等）
+- vector_search: 用户想要搜索或查找信息
+
+操作类型说明：
+- create_file: 创建文件（包含文件扩展名或明确说明是文件）
+- create_folder: 创建文件夹/目录
+- search_documents: 搜索文档内容
+- other: 其他操作"""
+
+            user_prompt = f"""请分析以下用户输入的意图：
+
+用户输入："{query}"
+
+请返回JSON格式的分析结果："""
+
+            # 调用LLM进行意图分析
+            response = client._call_llm_with_prompt(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                parameters={
+                    "max_tokens": 300,
+                    "temperature": 0.1
+                }
+            )
+            
+            # 解析JSON响应
+            try:
+                # 清理响应文本
+                cleaned_response = response.strip()
+                
+                # 处理可能的markdown代码块
+                if '```json' in cleaned_response:
+                    json_start = cleaned_response.find('```json') + 7
+                    json_end = cleaned_response.find('```', json_start)
+                    if json_end != -1:
+                        cleaned_response = cleaned_response[json_start:json_end].strip()
+                elif '```' in cleaned_response:
+                    json_start = cleaned_response.find('```') + 3
+                    json_end = cleaned_response.find('```', json_start)
+                    if json_end != -1:
+                        cleaned_response = cleaned_response[json_start:json_end].strip()
+                
+                # 找到JSON对象
+                if not cleaned_response.startswith('{'):
+                    brace_start = cleaned_response.find('{')
+                    if brace_start != -1:
+                        cleaned_response = cleaned_response[brace_start:]
+                
+                if not cleaned_response.endswith('}'):
+                    brace_end = cleaned_response.rfind('}')
+                    if brace_end != -1:
+                        cleaned_response = cleaned_response[:brace_end + 1]
+                
+                intent_result = json.loads(cleaned_response)
+                logger.info(f"LLM意图分析成功 - 查询: {query}, 意图: {intent_result.get('intent_type')}, 置信度: {intent_result.get('confidence')}")
+                return intent_result
+                
+            except json.JSONDecodeError as e:
+                logger.warning(f"LLM意图分析JSON解析失败: {e}, 原始响应: {response[:200]}...")
+                return LLMService._fallback_intent_analysis(query)
+                
+        except Exception as e:
+            logger.error(f"LLM意图分析失败: {e}")
+            return LLMService._fallback_intent_analysis(query)
+    
+    @staticmethod
+    def _fallback_intent_analysis(query: str) -> Dict[str, Any]:
+        """备用的基于关键词的意图分析"""
+        query_lower = query.lower()
+        
+        # 检测搜索意图的关键词
+        search_keywords = ['找', '搜索', '查找', '寻找', '在哪里', '哪里有', '搜', '查', '检索']
+        
+        # 文件扩展名
+        file_extensions = ['.txt', '.doc', '.docx', '.pdf', '.xls', '.xlsx', '.jpg', '.png', '.mp4', '.md']
+        
+        # 优先检测搜索意图
+        if any(keyword in query_lower for keyword in search_keywords):
+            return {
+                "intent_type": "vector_search",
+                "confidence": 0.9,
+                "action_type": "search_documents",
+                "parameters": {
+                    "search_keywords": query
+                },
+                "reasoning": "检测到搜索关键词（备用分析）"
+            }
+        
+        # 检测文件创建意图（必须包含文件扩展名）
+        has_file_extension = any(ext in query_lower for ext in file_extensions)
+        if has_file_extension:
+            return {
+                "intent_type": "mcp_action",
+                "confidence": 0.9,
+                "action_type": "create_file",
+                "parameters": {
+                    "file_name": None,  # 需要进一步解析
+                    "parent_folder": None
+                },
+                "reasoning": "检测到文件扩展名，判断为创建文件（备用分析）"
+            }
+        
+        # 检测文件夹创建意图
+        folder_keywords = ['文件夹', '目录', '文件夹']
+        create_keywords = ['创建', '新建', '建立', '建']
+        
+        has_folder_keyword = any(keyword in query_lower for keyword in folder_keywords)
+        has_create_keyword = any(keyword in query_lower for keyword in create_keywords)
+        
+        if has_folder_keyword and has_create_keyword:
+            return {
+                "intent_type": "mcp_action",
+                "confidence": 0.9,
+                "action_type": "create_folder",
+                "parameters": {
+                    "folder_name": None,  # 需要进一步解析
+                    "parent_folder": None
+                },
+                "reasoning": "检测到文件夹和创建关键词（备用分析）"
+            }
+        
+        # 如果只有创建关键词，默认为创建文件夹
+        elif has_create_keyword:
+            return {
+                "intent_type": "mcp_action",
+                "confidence": 0.7,
+                "action_type": "create_folder",
+                "parameters": {
+                    "folder_name": None,
+                    "parent_folder": None
+                },
+                "reasoning": "检测到创建关键词，默认为创建文件夹（备用分析）"
+            }
+        
+        # 默认为搜索
+        return {
+            "intent_type": "vector_search",
+            "confidence": 0.6,
+            "action_type": "search_documents",
+            "parameters": {
+                "search_keywords": query
+            },
+            "reasoning": "未检测到明确的操作意图，默认为搜索请求（备用分析）"
+        }
+    
+    @staticmethod
+    def extract_search_keywords(query: str, llm_model: str = None) -> Dict[str, Any]:
+        """
+        使用LLM从用户查询中提取最佳的搜索关键词
+        
+        Args:
+            query: 用户原始查询
+            llm_model: LLM模型名称
+            
+        Returns:
+            {
+                'original_query': str,      # 原始查询
+                'keywords': List[str],      # 提取的关键词列表
+                'optimized_query': str,     # 优化后的查询语句
+                'reasoning': str,           # 提取依据
+                'used_llm': bool           # 是否使用了LLM
+            }
+        """
+        if not llm_model:
+            llm_model = f"{Config.DEFAULT_LLM_PROVIDER}:{Config.DEFAULT_LLM_MODEL}"
+        
+        client = LLMClientFactory.create_client(llm_model)
+        if not client:
+            logger.warning(f"无法创建LLM客户端: {llm_model}，使用备用关键词提取")
+            return LLMService._fallback_keyword_extraction(query)
+        
+        try:
+            system_prompt = """你是一个专业的搜索关键词提取专家。你的任务是从用户的自然语言查询中提取最有效的搜索关键词。
+
+请严格按照以下JSON格式返回结果（不要添加markdown格式或其他文本）：
+{
+  "keywords": ["关键词1", "关键词2", "关键词3"],
+  "optimized_query": "优化后的搜索查询",
+  "reasoning": "关键词提取的依据"
+}
+
+关键词提取原则：
+1. 提取核心概念和实体词汇
+2. 去除停用词（的、是、在、了、等）
+3. 保留重要的修饰词和限定词
+4. 考虑同义词和相关词
+5. 优先提取名词、专业术语
+6. 保持2-5个关键词为最佳
+
+优化查询原则：
+1. 重新组织关键词形成简洁的查询
+2. 保持查询的语义完整性
+3. 适合向量相似度搜索"""
+
+            user_prompt = f"""请从以下用户查询中提取搜索关键词：
+
+用户查询："{query}"
+
+请返回JSON格式的关键词提取结果："""
+
+            # 调用LLM进行关键词提取
+            response = client._call_llm_with_prompt(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                parameters={
+                    "max_tokens": 200,
+                    "temperature": 0.2
+                }
+            )
+            
+            # 解析JSON响应
+            try:
+                # 清理响应文本
+                cleaned_response = response.strip()
+                
+                # 处理可能的markdown代码块
+                if '```json' in cleaned_response:
+                    json_start = cleaned_response.find('```json') + 7
+                    json_end = cleaned_response.find('```', json_start)
+                    if json_end != -1:
+                        cleaned_response = cleaned_response[json_start:json_end].strip()
+                elif '```' in cleaned_response:
+                    json_start = cleaned_response.find('```') + 3
+                    json_end = cleaned_response.find('```', json_start)
+                    if json_end != -1:
+                        cleaned_response = cleaned_response[json_start:json_end].strip()
+                
+                # 找到JSON对象
+                if not cleaned_response.startswith('{'):
+                    brace_start = cleaned_response.find('{')
+                    if brace_start != -1:
+                        cleaned_response = cleaned_response[brace_start:]
+                
+                if not cleaned_response.endswith('}'):
+                    brace_end = cleaned_response.rfind('}')
+                    if brace_end != -1:
+                        cleaned_response = cleaned_response[:brace_end + 1]
+                
+                keyword_result = json.loads(cleaned_response)
+                
+                # 构建完整的返回结果
+                result = {
+                    'original_query': query,
+                    'keywords': keyword_result.get('keywords', []),
+                    'optimized_query': keyword_result.get('optimized_query', query),
+                    'reasoning': keyword_result.get('reasoning', '使用LLM提取关键词'),
+                    'used_llm': True
+                }
+                
+                logger.info(f"LLM关键词提取成功 - 原查询: {query}, 关键词: {result['keywords']}")
+                return result
+                
+            except json.JSONDecodeError as e:
+                logger.warning(f"LLM关键词提取JSON解析失败: {e}, 原始响应: {response[:200]}...")
+                return LLMService._fallback_keyword_extraction(query)
+                
+        except Exception as e:
+            logger.error(f"LLM关键词提取失败: {e}")
+            return LLMService._fallback_keyword_extraction(query)
+    
+    @staticmethod
+    def _fallback_keyword_extraction(query: str) -> Dict[str, Any]:
+        """
+        备用的基于规则的关键词提取
+        """
+        import re
+        import jieba
+        
+        try:
+            # 使用jieba进行中文分词
+            words = list(jieba.cut(query))
+            
+            # 定义停用词
+            stop_words = {
+                '的', '了', '在', '是', '我', '有', '和', '就', '不', '人', '都', '一', '一个',
+                '上', '也', '很', '到', '说', '要', '去', '你', '会', '着', '没有', '看',
+                '好', '自己', '这', '那', '里', '时', '把', '为', '但', '与', '及', '或',
+                '等', '如', '由', '从', '以', '而', '且', '然后', '因为', '所以'
+            }
+            
+            # 过滤停用词和短词
+            keywords = []
+            for word in words:
+                word = word.strip()
+                if (len(word) > 1 and 
+                    word not in stop_words and 
+                    not re.match(r'^[^\w\s]+$', word)):  # 排除纯标点
+                    keywords.append(word)
+            
+            # 保留前5个关键词
+            keywords = keywords[:5] if len(keywords) > 5 else keywords
+            
+            # 如果没有提取到关键词，使用原查询
+            if not keywords:
+                keywords = [query]
+            
+            # 生成优化查询
+            optimized_query = ' '.join(keywords) if keywords else query
+            
+            return {
+                'original_query': query,
+                'keywords': keywords,
+                'optimized_query': optimized_query,
+                'reasoning': '使用jieba分词和停用词过滤（备用方法）',
+                'used_llm': False
+            }
+            
+        except Exception as e:
+            logger.error(f"备用关键词提取失败: {e}")
+            return {
+                'original_query': query,
+                'keywords': [query],
+                'optimized_query': query,
+                'reasoning': f'关键词提取失败，使用原查询: {str(e)}',
+                'used_llm': False
+            } 
