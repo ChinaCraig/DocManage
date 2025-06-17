@@ -12,12 +12,12 @@
             background-color: #f8f9fa;
             margin: 0;
             padding: 0;
-            height: 100vh;
-            overflow: hidden;
+            min-height: 100vh; /* 改为最小高度，而不是固定高度 */
+            overflow-x: hidden; /* 只隐藏水平滚动条 */
         }
 
         .container-fluid {
-            height: 100vh;
+            min-height: 100vh; /* 改为最小高度 */
             padding: 0;
         }
 
@@ -75,7 +75,7 @@
 
         /* 管理工具栏 */
         .management-toolbar {
-            padding: 15px;
+            padding: 12px 15px;
             border-bottom: 1px solid #e0e0e0;
             background: #fff;
             position: sticky;
@@ -84,10 +84,10 @@
         }
 
         .toolbar-title {
-            font-size: 16px;
+            font-size: 14px;
             font-weight: 600;
             color: #2c3e50;
-            margin-bottom: 15px;
+            margin-bottom: 12px;
             display: flex;
             align-items: center;
             gap: 8px;
@@ -96,13 +96,14 @@
         .toolbar-actions {
             display: flex;
             gap: 8px;
-            flex-wrap: wrap;
+            flex-wrap: nowrap;
+            align-items: center;
         }
 
         .toolbar-btn {
             padding: 8px 12px;
             border: none;
-            border-radius: 6px;
+            border-radius: 8px;
             font-size: 12px;
             font-weight: 500;
             transition: all 0.2s ease;
@@ -110,6 +111,49 @@
             display: flex;
             align-items: center;
             gap: 5px;
+            white-space: nowrap;
+            flex-shrink: 0;
+            min-width: 0;
+            height: 36px; /* 固定高度与搜索框协调 */
+        }
+
+        .toolbar-btn i {
+            flex-shrink: 0;
+            font-size: 14px;
+        }
+
+        /* 在较小空间下进一步优化按钮文字 */
+        @media (max-width: 380px) {
+            .toolbar-btn {
+                font-size: 11px;
+                padding: 6px 10px;
+                gap: 4px;
+            }
+            
+            .search-input {
+                font-size: 11px;
+                padding: 6px 14px 6px 36px;
+            }
+            
+            .search-input::placeholder {
+                font-size: 11px;
+            }
+        }
+
+        @media (max-width: 320px) {
+            .toolbar-btn span {
+                display: none;
+            }
+            
+            .toolbar-btn {
+                padding: 8px;
+                min-width: 36px;
+                justify-content: center;
+            }
+            
+            .search-input::placeholder {
+                content: "搜索...";
+            }
         }
 
         .btn-primary-custom {
@@ -134,7 +178,7 @@
 
         /* 搜索框 */
         .search-container {
-            padding: 15px;
+            padding: 12px 15px;
             border-bottom: 1px solid #e0e0e0;
             background: #fff;
         }
@@ -145,11 +189,13 @@
 
         .search-input {
             border: 2px solid #e9ecef;
-            border-radius: 25px;
-            padding: 12px 20px 12px 45px;
-            font-size: 14px;
+            border-radius: 8px; /* 改为与按钮一致的圆角 */
+            padding: 8px 16px 8px 40px; /* 减少内边距，与按钮高度协调 */
+            font-size: 12px; /* 与按钮字体大小一致 */
             width: 100%;
             transition: all 0.3s ease;
+            height: 36px; /* 固定高度与按钮一致 */
+            box-sizing: border-box;
         }
 
         .search-input:focus {
@@ -157,23 +203,38 @@
             box-shadow: 0 0 0 0.2rem rgba(0,123,255,0.25);
         }
 
+        .search-input::placeholder {
+            font-size: 12px;
+            color: #6c757d;
+        }
+
         .search-icon {
             position: absolute;
-            left: 15px;
+            left: 12px; /* 调整位置 */
             top: 50%;
             transform: translateY(-50%);
             color: #6c757d;
             pointer-events: none;
+            font-size: 14px; /* 与按钮图标大小一致 */
         }
 
         .search-clear {
             position: absolute;
-            right: 15px;
+            right: 12px; /* 调整位置 */
             top: 50%;
             transform: translateY(-50%);
             color: #6c757d;
             cursor: pointer;
             display: none;
+            font-size: 14px;
+            padding: 2px;
+            border-radius: 50%;
+            transition: all 0.2s ease;
+        }
+
+        .search-clear:hover {
+            background: rgba(108, 117, 125, 0.1);
+            color: #495057;
         }
 
         /* 文档树 */
@@ -456,14 +517,14 @@
             flex: 1;
             display: flex;
             flex-direction: column;
-            height: calc(100vh - 60px);
+            height: 100%; /* 改为100%而不是calc(100vh - 60px) */
         }
 
         /* 上部分：文档预览区域 */
         .preview-section {
             flex: 1;
             display: flex;
-            min-height: 250px;
+            min-height: 200px; /* 从250px减少到200px */
             overflow: hidden;
             transition: all 0.3s ease;
         }
@@ -554,9 +615,9 @@
 
         /* 下部分：聊天检索区域 */
         .chat-section {
-            height: 35vh;
-            min-height: 250px;
-            max-height: 70vh;
+            height: 30vh; /* 从35vh减少到30vh */
+            min-height: 200px; /* 从250px减少到200px */
+            max-height: 60vh; /* 从70vh减少到60vh */
             display: flex;
             flex-direction: column;
             background: #fff;
@@ -573,7 +634,7 @@
 
         /* 预览区域样式 */
         .preview-header {
-            padding: 15px 20px;
+            padding: 12px 20px; /* 从15px减少到12px */
             background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
             border-bottom: 1px solid #e9ecef;
             border-radius: 8px 8px 0 0;
@@ -688,13 +749,12 @@
 
         .preview-content {
             flex: 1;
-            padding: 20px;
+            padding: 15px; /* 从20px减少到15px */
             overflow-y: auto;
             overflow-x: hidden;
-            min-height: 200px;
+            min-height: 150px; /* 从200px减少到150px */
             display: flex;
             flex-direction: column;
-            /* 自定义滚动条样式 */
             scrollbar-width: thin;
             scrollbar-color: #cbd5e0 #f7fafc;
         }
@@ -765,7 +825,7 @@
 
         /* 聊天区域样式 */
         .chat-header {
-            padding: 15px;
+            padding: 12px 15px; /* 从15px减少到12px */
             border-bottom: 1px solid #e9ecef;
             background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
         }
@@ -845,16 +905,263 @@
             font-style: italic;
         }
 
+        /* 聊天内容区域 */
+        .chat-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* 欢迎状态 */
+        .chat-welcome-state {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 20px 15px; /* 从30px减少到20px */
+            text-align: center;
+        }
+
+        .welcome-content {
+            max-width: 100%;
+            margin-bottom: 40px;
+        }
+
+        /* 居中输入框 */
+        .chat-input-center {
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .chat-input-center .input-group {
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            border-radius: 30px;
+            overflow: hidden;
+            border: 2px solid #e9ecef;
+            transition: all 0.3s ease;
+        }
+
+        .chat-input-center .input-group:hover {
+            border-color: #007bff;
+            box-shadow: 0 6px 25px rgba(0, 123, 255, 0.15);
+        }
+
+        .chat-input-center .form-control {
+            border: none;
+            padding: 15px 20px;
+            font-size: 16px;
+            background: #fff;
+        }
+
+        .chat-input-center .form-control:focus {
+            box-shadow: none;
+            border: none;
+        }
+
+        .chat-input-center .btn-primary {
+            border: none;
+            padding: 15px 25px;
+            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+            border-radius: 0;
+        }
+
+        .chat-input-center .btn-primary:hover {
+            background: linear-gradient(135deg, #0056b3 0%, #004085 100%);
+            transform: scale(1.05);
+        }
+
+        /* 聊天消息区域 */
         .chat-messages {
             flex: 1;
             padding: 15px;
             overflow-y: auto;
             min-height: 120px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
             /* 移除max-height限制，让用户可以自由调整大小 */
         }
 
+        /* 聊天消息样式 - 协调的宽度布局 */
+        .message {
+            width: 100%;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: flex-start;
+            word-break: normal;
+            overflow-wrap: break-word;
+            padding: 0 15px; /* 给整个消息容器添加左右内边距 */
+        }
+
+        .message.user {
+            justify-content: flex-end;
+        }
+
+        .message.assistant {
+            justify-content: flex-start;
+        }
+
+        .message-content {
+            padding: 12px 16px;
+            border-radius: 18px;
+            position: relative;
+            min-width: 80px;
+            max-width: 70%; /* 增加最大宽度到70% */
+            white-space: normal;
+            word-break: normal;
+            overflow-wrap: break-word;
+            display: inline-block;
+            width: auto;
+            line-height: 1.5;
+            text-align: left;
+            writing-mode: horizontal-tb;
+            direction: ltr;
+            font-size: 14px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1); /* 添加阴影效果 */
+        }
+
+        /* 用户消息样式 */
+        .message.user .message-content {
+            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+            color: white;
+            border-radius: 18px 18px 4px 18px; /* 右下角小圆角，模拟聊天气泡 */
+            margin-left: 20%; /* 确保用户消息不会太靠左 */
+        }
+
+        /* 助手消息样式 */
+        .message.assistant .message-content {
+            background: #f8f9fa;
+            color: #333;
+            border: 1px solid #e9ecef;
+            border-radius: 18px 18px 18px 4px; /* 左下角小圆角，模拟聊天气泡 */
+            margin-right: 20%; /* 确保助手消息不会太靠右 */
+        }
+
+        /* 时间戳样式 */
+        .message-time {
+            font-size: 11px;
+            opacity: 0.7;
+            margin-top: 4px;
+            text-align: left;
+            white-space: nowrap;
+            display: block;
+        }
+
+        /* 用户消息的时间戳右对齐 */
+        .message.user .message-time {
+            text-align: right;
+        }
+
+        /* 助手消息的时间戳左对齐 */
+        .message.assistant .message-time {
+            text-align: left;
+        }
+
+        .message-content > div:first-child {
+            display: inline;
+            white-space: normal;
+            word-break: normal;
+            writing-mode: horizontal-tb;
+        }
+
+        /* 针对长消息的特殊处理 */
+        .message-content.long-message {
+            max-width: 85%; /* 长消息可以更宽 */
+        }
+
+        /* 针对短消息的特殊处理 */
+        .message-content.short-message {
+            max-width: 40%; /* 短消息保持适中宽度 */
+            min-width: 100px;
+        }
+
+        /* LLM答案容器的特殊样式调整 */
+        .llm-answer-container {
+            background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%);
+            border: 1px solid #bbdefb;
+            border-radius: 18px 18px 18px 4px; /* 保持助手消息的气泡样式 */
+            padding: 16px;
+            margin: 10px 0;
+            box-shadow: 0 4px 12px rgba(63, 81, 181, 0.15);
+            max-width: 85%; /* 让LLM答案也有合适的宽度 */
+            margin-right: 15%; /* 确保不会太靠右 */
+        }
+
+        /* MCP结果容器样式调整 */
+        .mcp-results-container {
+            border: 1px solid #e0e0e0;
+            border-radius: 18px 18px 18px 4px;
+            margin: 10px 0;
+            background: #fafafa;
+            max-width: 85%;
+            margin-right: 15%;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        /* 响应式调整 */
+        @media (max-width: 768px) {
+            .message-content {
+                max-width: 85%; /* 移动端增加宽度 */
+            }
+            
+            .message.user .message-content {
+                margin-left: 10%;
+            }
+            
+            .message.assistant .message-content {
+                margin-right: 10%;
+            }
+            
+            .llm-answer-container {
+                max-width: 90%;
+                margin-right: 5%;
+            }
+            
+            .mcp-results-container {
+                max-width: 90%;
+                margin-right: 5%;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .message {
+                padding: 0 10px;
+            }
+            
+            .message-content {
+                max-width: 90%;
+            }
+            
+            .message.user .message-content {
+                margin-left: 5%;
+            }
+            
+            .message.assistant .message-content {
+                margin-right: 5%;
+            }
+        }
+
+        /* 加载动画 */
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #007bff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
         .chat-input-area {
-            padding: 12px 15px;
+            padding: 10px 15px; /* 从12px减少到10px */
             border-top: 1px solid #e9ecef;
             background: #f8f9fa;
             border-radius: 0 0 8px 8px;
@@ -864,10 +1171,12 @@
         .llm-answer-container {
             background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%);
             border: 1px solid #bbdefb;
-            border-radius: 12px;
+            border-radius: 18px 18px 18px 4px; /* 保持助手消息的气泡样式 */
             padding: 16px;
             margin: 10px 0;
-            box-shadow: 0 2px 8px rgba(63, 81, 181, 0.1);
+            box-shadow: 0 4px 12px rgba(63, 81, 181, 0.15);
+            max-width: 85%; /* 让LLM答案也有合适的宽度 */
+            margin-right: 15%; /* 确保不会太靠右 */
         }
 
         .llm-answer-header {
@@ -933,9 +1242,12 @@
         /* MCP工具结果样式 */
         .mcp-results-container {
             border: 1px solid #e0e0e0;
-            border-radius: 8px;
+            border-radius: 18px 18px 18px 4px;
             margin: 10px 0;
             background: #fafafa;
+            max-width: 85%;
+            margin-right: 15%;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
         }
 
         .mcp-results-header {
@@ -1789,8 +2101,9 @@
 
         /* 聊天区域 */
         .chat-section {
-            height: 35vh;
-            min-height: 300px;
+            height: 30vh; /* 从35vh减少到30vh */
+            min-height: 200px; /* 从250px减少到200px */
+            max-height: 60vh; /* 从70vh减少到60vh */
             display: flex;
             flex-direction: column;
             border-top: 1px solid #e0e0e0;
@@ -1798,7 +2111,7 @@
         }
 
         .chat-header {
-            padding: 15px;
+            padding: 12px 15px; /* 从15px减少到12px */
             border-bottom: 1px solid #e9ecef;
             background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
         }
@@ -2377,7 +2690,7 @@
                                         文档预览
                                     </h6>
                                     <div class="d-flex align-items-center gap-2">
-                                        <div class="preview-actions" id="previewActions" style="display: none;">
+                                    <div class="preview-actions" id="previewActions" style="display: none;">
                                         <button class="preview-action-btn btn-download" id="downloadBtn" onclick="downloadCurrentDocument()" title="下载文件">
                                             <i class="bi bi-download"></i>
                                             下载
@@ -2513,8 +2826,11 @@
                                     </small>
                                 </div>
                             </div>
-                            <div class="chat-messages" id="chatMessages">
-                                <div class="empty-state">
+                            <!-- 聊天内容区域 -->
+                            <div class="chat-content" id="chatContent">
+                                <!-- 欢迎状态（默认显示，居中输入框） -->
+                                <div class="chat-welcome-state" id="chatWelcomeState">
+                                    <div class="welcome-content">
                                     <i class="bi bi-robot"></i>
                                     <h4>智能检索助手</h4>
                                     <p>支持多种搜索策略，为您找到最相关的文档内容</p>
@@ -2548,11 +2864,29 @@
                                         💡 系统会根据您的查询内容自动选择最合适的搜索策略
                                     </small>
                                 </div>
-                            </div>
-                            <div class="chat-input-area">
+                                    
+                                    <!-- 居中的输入框 -->
+                                    <div class="chat-input-center">
                                 <div class="input-group">
                                     <input type="text" id="chatInput" class="form-control" placeholder="输入您要查找的内容..." maxlength="500">
                                     <button class="btn btn-primary" id="sendButton" onclick="sendChatMessage()">
+                                        <i class="bi bi-send"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                                
+                                <!-- 聊天消息区域（初始隐藏） -->
+                                <div class="chat-messages" id="chatMessages" style="display: none;">
+                                    <!-- 动态生成的聊天消息将在这里显示 -->
+                                </div>
+                            </div>
+                            
+                            <!-- 底部输入框（初始隐藏） -->
+                            <div class="chat-input-area" id="chatInputArea" style="display: none;">
+                                <div class="input-group">
+                                    <input type="text" id="chatInputBottom" class="form-control" placeholder="输入您要查找的内容..." maxlength="500">
+                                    <button class="btn btn-primary" id="sendButtonBottom" onclick="sendChatMessage()">
                                         <i class="bi bi-send"></i>
                                     </button>
                                 </div>

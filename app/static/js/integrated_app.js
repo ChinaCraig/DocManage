@@ -9,7 +9,8 @@ let chatHistory = [];
 let nodeMap = {}; // 节点映射，用于快速查找
 let vectorizationMode = false; // 向量化模式标志
 let uploadAreaInitialized = false; // 上传区域初始化标志
-let isPreviewPanelOpen = true; // 预览面板开启状态
+let isPreviewPanelOpen = false; // 预览面板开启状态，默认关闭
+let isChatStarted = false; // 聊天是否已开始，控制输入框位置
 
 // LLM相关全局变量
 let availableLLMModels = [];
@@ -52,6 +53,9 @@ function initUnifiedInterface() {
     
     // 恢复用户面板偏好设置
     restorePreviewPanelState();
+    
+    // 恢复聊天状态
+    restoreChatState();
     
     // 加载文档树
     loadFileTree();
@@ -2597,27 +2601,55 @@ function displayPreviewContent(data, fileType, node) {
 function initChatInput() {
     const chatInput = document.getElementById('chatInput');
     const sendButton = document.getElementById('sendButton');
+    const chatInputBottom = document.getElementById('chatInputBottom');
+    const sendButtonBottom = document.getElementById('sendButtonBottom');
     
-    // 回车键发送
-    chatInput.addEventListener('keypress', function(e) {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            sendChatMessage();
-        }
-    });
+    // 中间输入框的事件监听
+    if (chatInput && sendButton) {
+        // 回车键发送
+        chatInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendChatMessage();
+            }
+        });
+        
+        // 点击发送按钮
+        sendButton.addEventListener('click', sendChatMessage);
+    }
     
-    // 点击发送按钮
-    sendButton.addEventListener('click', sendChatMessage);
+    // 底部输入框的事件监听
+    if (chatInputBottom && sendButtonBottom) {
+        // 回车键发送
+        chatInputBottom.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendChatMessage();
+            }
+        });
+        
+        // 点击发送按钮
+        sendButtonBottom.addEventListener('click', sendChatMessage);
+    }
 }
 
 async function sendChatMessage() {
-    const chatInput = document.getElementById('chatInput');
+    // 根据聊天状态获取当前活跃的输入框
+    const chatInput = isChatStarted ? 
+        document.getElementById('chatInputBottom') : 
+        document.getElementById('chatInput');
+    
     const similarityLevel = document.getElementById('similarityLevel');
     const enableMCPCheckbox = document.getElementById('enableMCP');
     const message = chatInput.value.trim();
     
     if (!message) {
         return;
+    }
+    
+    // 如果是第一次发送消息，切换布局
+    if (!isChatStarted) {
+        switchToChatMode();
     }
     
     // 获取用户选择的相似度等级
@@ -3135,9 +3167,19 @@ function addChatMessage(sender, content, isThinking = false) {
         `;
     } else {
         const time = new Date().toLocaleTimeString();
+        const safeContent = typeof content === 'string' ? content : String(content);
+        
+        // 根据内容长度添加不同的CSS类
+        let lengthClass = '';
+        if (safeContent.length <= 10) {
+            lengthClass = 'short-message';
+        } else if (safeContent.length > 100) {
+            lengthClass = 'long-message';
+        }
+        
         messageDiv.innerHTML = `
-            <div class="message-content">
-                <div>${content}</div>
+            <div class="message-content ${lengthClass}">
+                <div style="word-break: normal; overflow-wrap: break-word;">${safeContent}</div>
                 <div class="message-time">${time}</div>
             </div>
         `;
@@ -5452,9 +5494,6 @@ function closePreviewPanel(showToast = true) {
         // 更新状态
         isPreviewPanelOpen = false;
         
-        // 保存用户偏好设置
-        localStorage.setItem('previewPanelOpen', 'false');
-        
         // 根据参数决定是否显示提示
         if (showToast) {
             showSuccess('预览面板已关闭，现在可以专注于智能对话');
@@ -5482,9 +5521,6 @@ function openPreviewPanel() {
         // 更新状态
         isPreviewPanelOpen = true;
         
-        // 保存用户偏好设置
-        localStorage.setItem('previewPanelOpen', 'true');
-        
         // 显示成功提示
         showSuccess('预览面板已打开');
     }
@@ -5497,22 +5533,99 @@ function isPreviewPanelVisible() {
 
 // 恢复预览面板状态
 function restorePreviewPanelState() {
-    const savedState = localStorage.getItem('previewPanelOpen');
+    // 刷新页面等同于重新进入，总是默认关闭预览面板
+    setTimeout(() => {
+        closePreviewPanel(false); // 初始化时不显示提示
+    }, 200);
+}
+
+// ============ 聊天模式切换功能 ============
+
+// 切换到聊天模式（输入框移动到底部）
+function switchToChatMode() {
+    const chatWelcomeState = document.getElementById('chatWelcomeState');
+    const chatMessages = document.getElementById('chatMessages');
+    const chatInputArea = document.getElementById('chatInputArea');
     
-    // 如果没有保存的状态，默认为打开
-    if (savedState === null) {
-        isPreviewPanelOpen = true;
-        return;
+    if (chatWelcomeState && chatMessages && chatInputArea) {
+        // 隐藏欢迎状态
+        chatWelcomeState.style.display = 'none';
+        
+        // 显示聊天消息区域
+        chatMessages.style.display = 'flex';
+        
+        // 显示底部输入框
+        chatInputArea.style.display = 'block';
+        
+        // 更新状态
+        isChatStarted = true;
+        
+        // 保存聊天状态
+        saveChatState();
+        
+        // 清空居中输入框的内容（如果有的话）
+        const centerInput = document.getElementById('chatInput');
+        if (centerInput) {
+            centerInput.value = '';
+        }
     }
+}
+
+// 重置到欢迎模式（输入框回到中间）
+function resetToWelcomeMode() {
+    const chatWelcomeState = document.getElementById('chatWelcomeState');
+    const chatMessages = document.getElementById('chatMessages');
+    const chatInputArea = document.getElementById('chatInputArea');
     
-    // 根据保存的状态设置面板
-    if (savedState === 'false') {
-        // 延迟一点执行，确保DOM已经准备好
+    if (chatWelcomeState && chatMessages && chatInputArea) {
+        // 显示欢迎状态
+        chatWelcomeState.style.display = 'flex';
+        
+        // 隐藏聊天消息区域
+        chatMessages.style.display = 'none';
+        
+        // 隐藏底部输入框
+        chatInputArea.style.display = 'none';
+        
+        // 清空聊天消息
+        chatMessages.innerHTML = '';
+        
+        // 更新状态
+        isChatStarted = false;
+        
+        // 保存聊天状态
+        saveChatState();
+        
+        // 清空底部输入框的内容
+        const bottomInput = document.getElementById('chatInputBottom');
+        if (bottomInput) {
+            bottomInput.value = '';
+        }
+        
+        // 清空居中输入框的内容
+        const centerInput = document.getElementById('chatInput');
+        if (centerInput) {
+            centerInput.value = '';
+        }
+    }
+}
+
+// 恢复聊天状态
+function restoreChatState() {
+    // 检查是否有保存的聊天状态
+    const savedChatState = localStorage.getItem('isChatStarted');
+    const chatMessages = document.getElementById('chatMessages');
+    
+    // 如果之前有聊天记录且消息区域有内容，则切换到聊天模式
+    if (savedChatState === 'true' && chatMessages && chatMessages.children.length > 0) {
         setTimeout(() => {
-            closePreviewPanel(false); // 初始化时不显示提示
-        }, 200);
-    } else {
-        isPreviewPanelOpen = true;
+            switchToChatMode();
+        }, 100);
     }
+}
+
+// 保存聊天状态
+function saveChatState() {
+    localStorage.setItem('isChatStarted', isChatStarted.toString());
 }
 
