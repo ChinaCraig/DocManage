@@ -69,6 +69,8 @@
             flex-direction: column;
             min-width: 300px;
             max-width: 450px;
+            margin-left: 15px;
+            border-radius: 0 8px 8px 0;
         }
 
         /* 管理工具栏 */
@@ -443,6 +445,10 @@
             display: flex;
             flex-direction: column;
             background: #fff;
+            margin-left: 20px;
+            margin-right: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
 
         /* 主内容布局 */
@@ -457,8 +463,14 @@
         .preview-section {
             flex: 1;
             display: flex;
-            min-height: 350px;
-            margin-bottom: 15px;
+            min-height: 250px;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        /* 预览区域隐藏状态 */
+        .preview-section.hidden {
+            display: none;
         }
 
         /* 文档预览面板 */
@@ -491,14 +503,72 @@
             display: flex;
         }
 
+        /* 可拖拽分隔条 */
+        .resizer {
+            height: 8px;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            cursor: row-resize;
+            border-top: 1px solid #dee2e6;
+            border-bottom: 1px solid #dee2e6;
+            position: relative;
+            user-select: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+
+        .resizer:hover {
+            background: linear-gradient(135deg, #e9ecef 0%, #ced4da 100%);
+            border-color: #adb5bd;
+        }
+
+        .resizer::before {
+            content: '';
+            width: 30px;
+            height: 3px;
+            background: #6c757d;
+            border-radius: 2px;
+            opacity: 0.6;
+        }
+
+        .resizer:hover::before {
+            opacity: 1;
+            background: #495057;
+        }
+
+        .resizer.dragging {
+            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+            border-color: #007bff;
+        }
+
+        .resizer.dragging::before {
+            background: white;
+            opacity: 1;
+        }
+
+        /* 分隔条隐藏状态 */
+        .resizer.hidden {
+            display: none;
+        }
+
         /* 下部分：聊天检索区域 */
         .chat-section {
             height: 35vh;
-            min-height: 300px;
+            min-height: 250px;
+            max-height: 70vh;
             display: flex;
             flex-direction: column;
-            border-top: 1px solid #e0e0e0;
             background: #fff;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        /* 聊天区域全屏状态 */
+        .chat-section.fullscreen {
+            height: 100% !important;
+            flex: 1;
+            max-height: none;
         }
 
         /* 预览区域样式 */
@@ -591,6 +661,29 @@
         .preview-action-btn.btn-vectorize.active {
             background-color: #198754;
             color: white;
+        }
+
+        /* 预览关闭按钮 */
+        .preview-close-btn {
+            width: 32px;
+            height: 32px;
+            border: 1px solid #dc3545;
+            border-radius: 6px;
+            background: white;
+            color: #dc3545;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 14px;
+        }
+
+        .preview-close-btn:hover {
+            background-color: #dc3545;
+            color: white;
+            transform: translateY(-1px);
+            box-shadow: 0 3px 8px rgba(220, 53, 69, 0.3);
         }
 
         .preview-content {
@@ -756,8 +849,8 @@
             flex: 1;
             padding: 15px;
             overflow-y: auto;
-            min-height: 150px;
-            max-height: 200px;
+            min-height: 120px;
+            /* 移除max-height限制，让用户可以自由调整大小 */
         }
 
         .chat-input-area {
@@ -2216,9 +2309,9 @@
     </div>
 
     <div class="container-fluid">
-        <div class="row h-100">
+        <div class="d-flex h-100">
             <!-- 左侧边栏 -->
-            <div class="col-md-3 p-0">
+            <div style="width: 350px; flex-shrink: 0;">
                 <div class="sidebar">
                     <!-- 管理工具栏 -->
                     <div class="management-toolbar">
@@ -2270,7 +2363,7 @@
             </div>
 
             <!-- 主内容区域 -->
-            <div class="col-md-9 p-0">
+            <div style="flex: 1; min-width: 0;">
                 <div class="main-content">
                     <!-- 主内容布局 -->
                     <div class="main-layout" id="mainLayout">
@@ -2283,7 +2376,8 @@
                                         <i class="bi bi-eye"></i>
                                         文档预览
                                     </h6>
-                                    <div class="preview-actions" id="previewActions" style="display: none;">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <div class="preview-actions" id="previewActions" style="display: none;">
                                         <button class="preview-action-btn btn-download" id="downloadBtn" onclick="downloadCurrentDocument()" title="下载文件">
                                             <i class="bi bi-download"></i>
                                             下载
@@ -2299,6 +2393,10 @@
                                         <button class="preview-action-btn btn-vectorize" id="vectorizeBtn" onclick="toggleVectorization()" title="向量化">
                                             <i class="bi bi-vector-pen"></i>
                                             向量化
+                                        </button>
+                                        </div>
+                                        <button class="preview-close-btn" id="previewCloseBtn" onclick="closePreviewPanel()" title="关闭预览">
+                                            <i class="bi bi-x-lg"></i>
                                         </button>
                                     </div>
                                 </div>
@@ -2371,6 +2469,9 @@
                                 </div>
                             </div>
                         </div>
+
+                        <!-- 可拖拽分隔条 -->
+                        <div class="resizer" id="resizer"></div>
 
                         <!-- 下部分：聊天检索区域 -->
                         <div class="chat-section" id="chatSection">

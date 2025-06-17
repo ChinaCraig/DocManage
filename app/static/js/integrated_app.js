@@ -9,6 +9,7 @@ let chatHistory = [];
 let nodeMap = {}; // 节点映射，用于快速查找
 let vectorizationMode = false; // 向量化模式标志
 let uploadAreaInitialized = false; // 上传区域初始化标志
+let isPreviewPanelOpen = true; // 预览面板开启状态
 
 // LLM相关全局变量
 let availableLLMModels = [];
@@ -45,6 +46,12 @@ function initUnifiedInterface() {
         initUploadArea();
         uploadAreaInitialized = true;
     }
+    
+    // 初始化拖拽调整功能
+    setTimeout(initResizer, 100);
+    
+    // 恢复用户面板偏好设置
+    restorePreviewPanelState();
     
     // 加载文档树
     loadFileTree();
@@ -620,6 +627,11 @@ function selectNode(node) {
     } else {
         // 如果选中的是文件，则上传到其父文件夹
         currentParentId = node.parent_id;
+    }
+    
+    // 如果预览面板已关闭，则自动打开
+    if (!isPreviewPanelOpen) {
+        openPreviewPanel();
     }
     
     // 更新路径显示
@@ -5269,4 +5281,238 @@ document.addEventListener('hidden.bs.modal', function (event) {
         }
     }
 });
+
+// ============ 拖拽调整大小功能 ============
+
+// 拖拽功能初始化
+function initResizer() {
+    const resizer = document.getElementById('resizer');
+    const previewSection = document.getElementById('previewSection');
+    const chatSection = document.getElementById('chatSection'); 
+    const mainLayout = document.getElementById('mainLayout');
+
+    if (!resizer || !previewSection || !chatSection || !mainLayout) {
+        console.warn('拖拽调整功能初始化失败：找不到必要的元素');
+        return;
+    }
+
+    let isResizing = false;
+    let startY = 0;
+    let startPreviewHeight = 0;
+    let startChatHeight = 0;
+
+    // 鼠标按下事件
+    resizer.addEventListener('mousedown', function(e) {
+        // 只有在预览面板打开时才允许拖拽
+        if (!isPreviewPanelOpen) {
+            return;
+        }
+        
+        isResizing = true;
+        startY = e.clientY;
+        
+        // 记录初始高度
+        const previewRect = previewSection.getBoundingClientRect();
+        const chatRect = chatSection.getBoundingClientRect();
+        startPreviewHeight = previewRect.height;
+        startChatHeight = chatRect.height;
+        
+        // 添加拖拽样式
+        resizer.classList.add('dragging');
+        document.body.style.cursor = 'row-resize';
+        document.body.style.userSelect = 'none';
+        
+        // 阻止默认行为
+        e.preventDefault();
+    });
+
+    // 鼠标移动事件
+    document.addEventListener('mousemove', function(e) {
+        if (!isResizing) return;
+
+        const deltaY = e.clientY - startY;
+        const layoutHeight = mainLayout.getBoundingClientRect().height;
+        const resizerHeight = 8; // 分隔条高度
+        
+        // 计算新的高度
+        let newPreviewHeight = startPreviewHeight + deltaY;
+        let newChatHeight = startChatHeight - deltaY;
+        
+        // 设置最小和最大高度限制
+        const minPreviewHeight = 250;
+        const minChatHeight = 200;
+        const maxPreviewHeight = layoutHeight - minChatHeight - resizerHeight;
+        const maxChatHeight = layoutHeight - minPreviewHeight - resizerHeight;
+        
+        // 限制高度范围
+        if (newPreviewHeight < minPreviewHeight) {
+            newPreviewHeight = minPreviewHeight;
+            newChatHeight = layoutHeight - newPreviewHeight - resizerHeight;
+        } else if (newPreviewHeight > maxPreviewHeight) {
+            newPreviewHeight = maxPreviewHeight;
+            newChatHeight = layoutHeight - newPreviewHeight - resizerHeight;
+        }
+        
+        if (newChatHeight < minChatHeight) {
+            newChatHeight = minChatHeight;
+            newPreviewHeight = layoutHeight - newChatHeight - resizerHeight;
+        } else if (newChatHeight > maxChatHeight) {
+            newChatHeight = maxChatHeight;
+            newPreviewHeight = layoutHeight - newChatHeight - resizerHeight;
+        }
+        
+        // 应用新的高度
+        previewSection.style.height = newPreviewHeight + 'px';
+        previewSection.style.flex = 'none';
+        chatSection.style.height = newChatHeight + 'px';
+        chatSection.style.flex = 'none';
+        
+        e.preventDefault();
+    });
+
+    // 鼠标释放事件
+    document.addEventListener('mouseup', function(e) {
+        if (!isResizing) return;
+        
+        isResizing = false;
+        
+        // 移除拖拽样式
+        resizer.classList.remove('dragging');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        
+        // 保存用户调整的大小到localStorage
+        const previewHeight = previewSection.getBoundingClientRect().height;
+        const chatHeight = chatSection.getBoundingClientRect().height;
+        
+        localStorage.setItem('previewSectionHeight', previewHeight);
+        localStorage.setItem('chatSectionHeight', chatHeight);
+    });
+
+    // 页面加载时恢复之前保存的大小
+    restoreSavedSizes();
+}
+
+function restoreSavedSizes() {
+    const savedPreviewHeight = localStorage.getItem('previewSectionHeight');
+    const savedChatHeight = localStorage.getItem('chatSectionHeight');
+    
+    if (savedPreviewHeight && savedChatHeight) {
+        const previewSection = document.getElementById('previewSection');
+        const chatSection = document.getElementById('chatSection');
+        
+        if (previewSection && chatSection) {
+            previewSection.style.height = savedPreviewHeight + 'px';
+            previewSection.style.flex = 'none';
+            chatSection.style.height = savedChatHeight + 'px';  
+            chatSection.style.flex = 'none';
+        }
+    }
+}
+
+// 重置为默认大小
+function resetPanelSizes() {
+    const previewSection = document.getElementById('previewSection');
+    const chatSection = document.getElementById('chatSection');
+    
+    if (previewSection && chatSection) {
+        previewSection.style.height = '';
+        previewSection.style.flex = '1';
+        chatSection.style.height = '35vh';
+        chatSection.style.flex = '';
+        
+        // 清除保存的设置
+        localStorage.removeItem('previewSectionHeight');
+        localStorage.removeItem('chatSectionHeight');
+    }
+}
+
+// 在页面加载时初始化拖拽功能
+document.addEventListener('DOMContentLoaded', function() {
+    // 延迟一点初始化，确保DOM完全加载
+    setTimeout(initResizer, 100);
+});
+
+// ============ 预览面板开关功能 ============
+
+// 关闭预览面板
+function closePreviewPanel(showToast = true) {
+    const previewSection = document.getElementById('previewSection');
+    const resizer = document.getElementById('resizer');
+    const chatSection = document.getElementById('chatSection');
+    
+    if (previewSection && resizer && chatSection) {
+        // 隐藏预览区域和分隔条
+        previewSection.classList.add('hidden');
+        resizer.classList.add('hidden');
+        
+        // 聊天区域全屏
+        chatSection.classList.add('fullscreen');
+        
+        // 更新状态
+        isPreviewPanelOpen = false;
+        
+        // 保存用户偏好设置
+        localStorage.setItem('previewPanelOpen', 'false');
+        
+        // 根据参数决定是否显示提示
+        if (showToast) {
+            showSuccess('预览面板已关闭，现在可以专注于智能对话');
+        }
+    }
+}
+
+// 打开预览面板
+function openPreviewPanel() {
+    const previewSection = document.getElementById('previewSection');
+    const resizer = document.getElementById('resizer');
+    const chatSection = document.getElementById('chatSection');
+    
+    if (previewSection && resizer && chatSection) {
+        // 显示预览区域和分隔条
+        previewSection.classList.remove('hidden');
+        resizer.classList.remove('hidden');
+        
+        // 恢复聊天区域正常大小
+        chatSection.classList.remove('fullscreen');
+        
+        // 恢复之前保存的大小
+        restoreSavedSizes();
+        
+        // 更新状态
+        isPreviewPanelOpen = true;
+        
+        // 保存用户偏好设置
+        localStorage.setItem('previewPanelOpen', 'true');
+        
+        // 显示成功提示
+        showSuccess('预览面板已打开');
+    }
+}
+
+// 检查预览面板状态
+function isPreviewPanelVisible() {
+    return isPreviewPanelOpen;
+}
+
+// 恢复预览面板状态
+function restorePreviewPanelState() {
+    const savedState = localStorage.getItem('previewPanelOpen');
+    
+    // 如果没有保存的状态，默认为打开
+    if (savedState === null) {
+        isPreviewPanelOpen = true;
+        return;
+    }
+    
+    // 根据保存的状态设置面板
+    if (savedState === 'false') {
+        // 延迟一点执行，确保DOM已经准备好
+        setTimeout(() => {
+            closePreviewPanel(false); // 初始化时不显示提示
+        }, 200);
+    } else {
+        isPreviewPanelOpen = true;
+    }
+}
 
