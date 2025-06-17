@@ -74,6 +74,7 @@ def create_app(config_name=None):
     from app.routes.prompt_routes import prompt_routes
     from app.routes.llm_routes import llm_bp
     from app.routes.mcp_routes import mcp_bp
+    from app.routes.intent_routes import intent_bp
     
     app.register_blueprint(document_bp, url_prefix='/api/documents')
     app.register_blueprint(search_bp, url_prefix='/api/search')
@@ -84,6 +85,7 @@ def create_app(config_name=None):
     app.register_blueprint(config_bp, url_prefix='/api/config')
     app.register_blueprint(llm_bp, url_prefix='/api/llm')
     app.register_blueprint(mcp_bp, url_prefix='/api/mcp')
+    app.register_blueprint(intent_bp, url_prefix='/api/intent')
     app.register_blueprint(prompt_routes)
     
     # 注册主页路由 - 重定向到语义搜索

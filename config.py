@@ -106,6 +106,58 @@ class Config:
     DEFAULT_LLM_PROVIDER = os.environ.get('DEFAULT_LLM_PROVIDER') or 'openai'
     DEFAULT_LLM_MODEL = os.environ.get('DEFAULT_LLM_MODEL') or 'gpt-3.5-turbo'
     
+    # 意图识别专用LLM配置
+    INTENT_ANALYSIS_LLM_PROVIDER = os.environ.get('INTENT_ANALYSIS_LLM_PROVIDER') or 'deepseek'
+    INTENT_ANALYSIS_LLM_MODEL = os.environ.get('INTENT_ANALYSIS_LLM_MODEL') or 'deepseek-chat'
+    ENABLE_INTENT_ANALYSIS = os.environ.get('ENABLE_INTENT_ANALYSIS', 'true').lower() == 'true'
+    
+    # 意图识别提示词模板配置
+    INTENT_ANALYSIS_SYSTEM_PROMPT = os.environ.get('INTENT_ANALYSIS_SYSTEM_PROMPT') or """你是一个专业的用户意图分析助手。你需要分析用户的输入，判断用户想要执行什么操作。
+
+请严格按照以下JSON格式返回分析结果（不要添加markdown格式或其他文本）：
+{
+  "intent_type": "mcp_action|vector_search|folder_analysis",
+  "confidence": 0.0-1.0之间的数字,
+  "action_type": "create_file|create_folder|search_documents|analyze_folder|other",
+  "parameters": {
+    "file_name": "如果是创建文件，提取文件名",
+    "folder_name": "如果是创建文件夹或分析文件夹，提取文件夹名",
+    "parent_folder": "如果指定了父目录，提取父目录名",
+    "search_keywords": "如果是搜索，提取关键词",
+    "analysis_type": "如果是分析操作，提取分析类型（如：缺失内容、完整性检查等）"
+  },
+  "reasoning": "简要说明判断依据"
+}
+
+意图分类说明：
+- mcp_action: 用户想要执行操作（如创建文件、创建文件夹等）
+- vector_search: 用户想要搜索或查找信息
+- folder_analysis: 用户想要分析文件夹内容完整性
+
+操作类型说明：
+- create_file: 创建文件（包含文件扩展名或明确说明是文件）
+- create_folder: 创建文件夹/目录
+- search_documents: 搜索文档内容
+- analyze_folder: 分析文件夹内容（检查缺失文件、内容完整性等）
+- other: 其他操作
+
+特别注意：
+1. 当用户询问"分析XX缺少哪些内容"、"检查XX文件夹"、"确认XX目录"等时，应识别为folder_analysis意图
+2. 文件夹分析关键词包括：分析、检查、确认、缺少、完整性、内容等
+3. 务必准确提取文件夹名称到parameters.folder_name字段中
+4. 意图识别要求高精度，置信度低于0.6时应降级到向量搜索"""
+
+    INTENT_ANALYSIS_USER_PROMPT_TEMPLATE = os.environ.get('INTENT_ANALYSIS_USER_PROMPT_TEMPLATE') or """请分析以下用户输入的意图：
+
+用户输入："{query}"
+
+请返回JSON格式的分析结果："""
+
+    # 意图识别模型参数配置
+    INTENT_ANALYSIS_MAX_TOKENS = int(os.environ.get('INTENT_ANALYSIS_MAX_TOKENS') or 300)
+    INTENT_ANALYSIS_TEMPERATURE = float(os.environ.get('INTENT_ANALYSIS_TEMPERATURE') or 0.1)
+    INTENT_ANALYSIS_CONFIDENCE_THRESHOLD = float(os.environ.get('INTENT_ANALYSIS_CONFIDENCE_THRESHOLD') or 0.6)
+    
     # LLM功能开关
     ENABLE_LLM_QUERY_OPTIMIZATION = os.environ.get('ENABLE_LLM_QUERY_OPTIMIZATION', 'true').lower() == 'true'
     ENABLE_LLM_RESULT_RERANKING = os.environ.get('ENABLE_LLM_RESULT_RERANKING', 'true').lower() == 'true'

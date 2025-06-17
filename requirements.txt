@@ -40,4 +40,5 @@ requests==2.31.0
 python-dotenv>=1.0.1,<2.0.0
 Werkzeug==2.3.7
 chardet==5.2.0
-jieba==0.42.1 
+jieba==0.42.1
+PyYAML>=6.0 

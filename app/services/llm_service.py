@@ -785,67 +785,45 @@ class LLMService:
             return None
     
     @staticmethod
-    def analyze_user_intent(query: str, llm_model: str = None) -> Dict[str, Any]:
+    def analyze_user_intent(query: str, llm_model: str = None, scenario: str = None) -> Dict[str, Any]:
         """
-        使用LLM分析用户输入的意图，判断是MCP调用还是向量库检索
+        使用专用LLM模型分析用户输入的意图，判断是MCP调用还是向量库检索
+        
+        Args:
+            query: 用户查询
+            llm_model: LLM模型名称
+            scenario: 场景类型（如 legal_document, financial_document, hr_document）
         """
         if not llm_model:
-            # 如果没有指定模型，使用默认配置
-            llm_model = f"{Config.DEFAULT_LLM_PROVIDER}:{Config.DEFAULT_LLM_MODEL}"
+            # 使用专用的意图识别模型
+            llm_model = f"{Config.INTENT_ANALYSIS_LLM_PROVIDER}:{Config.INTENT_ANALYSIS_LLM_MODEL}"
+        
+        logger.info(f"使用意图识别模型: {llm_model}, 场景: {scenario or '通用'}")
         
         client = LLMClientFactory.create_client(llm_model)
         if not client:
-            logger.warning(f"无法创建LLM客户端: {llm_model}，回退到关键词分析")
-            return LLMService._fallback_intent_analysis(query)
+            logger.warning(f"无法创建意图识别LLM客户端: {llm_model}，回退到关键词分析")
+            return LLMService._fallback_intent_analysis(query, scenario)
         
         try:
-            system_prompt = """你是一个智能意图分析助手。你需要分析用户的输入，判断用户想要执行什么操作。
+            # 从意图提示词服务获取提示词模板
+            from app.services.intent_prompt_service import intent_prompt_service
+            
+            system_prompt = intent_prompt_service.get_system_prompt(scenario)
+            user_prompt_template = intent_prompt_service.get_user_prompt_template()
+            user_prompt = user_prompt_template.format(query=query)
+            model_params = intent_prompt_service.get_model_parameters()
+            
+            logger.debug(f"意图分析系统提示词长度: {len(system_prompt)} 字符")
+            logger.debug(f"意图分析用户提示词: {user_prompt}")
 
-请严格按照以下JSON格式返回分析结果（不要添加markdown格式或其他文本）：
-{
-  "intent_type": "mcp_action|vector_search|folder_analysis",
-  "confidence": 0.0-1.0之间的数字,
-  "action_type": "create_file|create_folder|search_documents|analyze_folder|other",
-  "parameters": {
-    "file_name": "如果是创建文件，提取文件名",
-    "folder_name": "如果是创建文件夹或分析文件夹，提取文件夹名",
-    "parent_folder": "如果指定了父目录，提取父目录名",
-    "search_keywords": "如果是搜索，提取关键词",
-    "analysis_type": "如果是分析操作，提取分析类型（如：缺失内容、完整性检查等）"
-  },
-  "reasoning": "简要说明判断依据"
-}
-
-意图分类说明：
-- mcp_action: 用户想要执行操作（如创建文件、创建文件夹等）
-- vector_search: 用户想要搜索或查找信息
-- folder_analysis: 用户想要分析文件夹内容完整性
-
-操作类型说明：
-- create_file: 创建文件（包含文件扩展名或明确说明是文件）
-- create_folder: 创建文件夹/目录
-- search_documents: 搜索文档内容
-- analyze_folder: 分析文件夹内容（检查缺失文件、内容完整性等）
-- other: 其他操作
-
-特别注意：
-1. 当用户询问"分析XX缺少哪些内容"、"检查XX文件夹"、"确认XX目录"等时，应识别为folder_analysis意图
-2. 文件夹分析关键词包括：分析、检查、确认、缺少、完整性、内容等
-3. 务必准确提取文件夹名称到parameters.folder_name字段中"""
-
-            user_prompt = f"""请分析以下用户输入的意图：
-
-用户输入："{query}"
-
-请返回JSON格式的分析结果："""
-
-            # 调用LLM进行意图分析
+            # 调用专用LLM进行意图分析
             response = client._call_llm_with_prompt(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 parameters={
-                    "max_tokens": 300,
-                    "temperature": 0.1
+                    "max_tokens": model_params.get('max_tokens', Config.INTENT_ANALYSIS_MAX_TOKENS),
+                    "temperature": model_params.get('temperature', Config.INTENT_ANALYSIS_TEMPERATURE)
                 }
             )
             
@@ -878,95 +856,206 @@ class LLMService:
                         cleaned_response = cleaned_response[:brace_end + 1]
                 
                 intent_result = json.loads(cleaned_response)
-                logger.info(f"LLM意图分析成功 - 查询: {query}, 意图: {intent_result.get('intent_type')}, 置信度: {intent_result.get('confidence')}")
+                
+                # 添加模型信息和置信度调整
+                intent_result['model_used'] = llm_model
+                intent_result['prompt_source'] = 'yaml_config'
+                intent_result['scenario'] = scenario
+                
+                # 使用配置文件中的规则调整置信度
+                from app.services.intent_prompt_service import intent_prompt_service
+                confidence_boost = intent_prompt_service.get_confidence_boost(
+                    query, intent_result.get('intent_type', '')
+                )
+                if confidence_boost != 0:
+                    original_confidence = intent_result.get('confidence', 0)
+                    intent_result['confidence'] = min(1.0, max(0.0, original_confidence + confidence_boost))
+                    intent_result['confidence_boost'] = confidence_boost
+                    logger.debug(f"置信度调整: {original_confidence} -> {intent_result['confidence']} (boost: {confidence_boost})")
+                
+                logger.info(f"LLM意图分析成功 - 查询: {query}, 意图: {intent_result.get('intent_type')}, 置信度: {intent_result.get('confidence')}, 模型: {llm_model}")
                 return intent_result
                 
             except json.JSONDecodeError as e:
                 logger.warning(f"LLM意图分析JSON解析失败: {e}, 原始响应: {response[:200]}...")
-                return LLMService._fallback_intent_analysis(query)
+                # 使用配置文件中的错误处理策略
+                from app.services.intent_prompt_service import intent_prompt_service
+                error_config = intent_prompt_service.get_error_handling_config('json_parse_error')
+                return LLMService._create_fallback_result(query, error_config, scenario)
                 
         except Exception as e:
-            logger.error(f"LLM意图分析失败: {e}")
-            return LLMService._fallback_intent_analysis(query)
+            logger.error(f"专用模型意图分析失败: {e}")
+            # 使用配置文件中的错误处理策略
+            from app.services.intent_prompt_service import intent_prompt_service
+            error_config = intent_prompt_service.get_error_handling_config('llm_call_error')
+            return LLMService._create_fallback_result(query, error_config, scenario)
     
     @staticmethod
-    def _fallback_intent_analysis(query: str) -> Dict[str, Any]:
-        """备用的基于关键词的意图分析"""
+    def _create_fallback_result(query: str, error_config: Dict[str, Any], scenario: str = None) -> Dict[str, Any]:
+        """根据错误配置创建降级结果"""
+        result = {
+            "intent_type": error_config.get('fallback_intent', 'vector_search'),
+            "confidence": error_config.get('confidence', 0.5),
+            "action_type": "search_documents" if error_config.get('fallback_intent') == 'vector_search' else "other",
+            "parameters": {
+                "search_keywords": query if error_config.get('fallback_intent') == 'vector_search' else ""
+            },
+            "reasoning": error_config.get('reasoning', '使用降级策略'),
+            "is_fallback": True,
+            "scenario": scenario,
+            "prompt_source": "yaml_config_fallback"
+        }
+        return result
+
+    @staticmethod
+    def _fallback_intent_analysis(query: str, scenario: str = None) -> Dict[str, Any]:
+        """备用的基于关键词的意图分析，现在使用配置文件中的关键词"""
+        try:
+            from app.services.intent_prompt_service import intent_prompt_service
+            
+            # 获取增强关键词配置
+            enhanced_keywords = intent_prompt_service.get_enhanced_keywords(scenario)
+            query_features = intent_prompt_service.analyze_query_complexity(query)
+            
+            query_lower = query.lower()
+            
+            # 如果查询复杂度分析提供了建议意图，优先使用
+            if query_features.get('suggested_intent'):
+                suggested_intent = query_features['suggested_intent']
+                confidence = 0.7 + (query_features.get('complexity_score', 0) * 0.1)
+                
+                intent_mapping = {
+                    'create': 'mcp_action',
+                    'search': 'vector_search', 
+                    'analyze': 'folder_analysis'
+                }
+                
+                return {
+                    "intent_type": intent_mapping.get(suggested_intent, 'vector_search'),
+                    "confidence": min(0.9, confidence),
+                    "action_type": f"{suggested_intent}_documents" if suggested_intent in ['search'] else f"{suggested_intent}_folder",
+                    "parameters": {
+                        "search_keywords": query if suggested_intent == 'search' else "",
+                        "folder_name": None if suggested_intent != 'analyze' else query,
+                        "file_name": None if suggested_intent != 'create' else query
+                    },
+                    "reasoning": f"基于查询复杂度分析，建议意图: {suggested_intent}（备用分析）",
+                    "is_fallback": True,
+                    "scenario": scenario,
+                    "complexity_features": query_features
+                }
+            
+            # 降级到传统关键词分析
+            return LLMService._traditional_keyword_analysis(query, scenario)
+            
+        except Exception as e:
+            logger.error(f"配置化备用分析失败: {e}")
+            return LLMService._traditional_keyword_analysis(query, scenario)
+    
+    @staticmethod
+    def _traditional_keyword_analysis(query: str, scenario: str = None) -> Dict[str, Any]:
+        """传统的关键词分析方法 - 支持新的三类意图"""
         query_lower = query.lower()
         
-        # 检测文件夹分析意图的关键词
-        analysis_keywords = ['分析', '检查', '确认', '对比', '比较', '缺少', '缺失', '完整性', '检验', '核查']
-        folder_keywords = ['文件夹', '目录', '文件夹']
+        # 定义新的三类意图关键词
         
-        # 检测搜索意图的关键词
-        search_keywords = ['找', '搜索', '查找', '寻找', '在哪里', '哪里有', '搜', '查', '检索']
-        
-        # 文件扩展名
+        # 1. MCP调用关键词
+        create_keywords = ['创建', '新建', '建立', '生成', '制作', '添加', '建', '做一个']
+        file_keywords = ['文件', '文档']
+        folder_keywords = ['文件夹', '目录', '分类', '归档']
         file_extensions = ['.txt', '.doc', '.docx', '.pdf', '.xls', '.xlsx', '.jpg', '.png', '.mp4', '.md']
         
-        # 优先检测文件夹分析意图
-        has_analysis_keyword = any(keyword in query_lower for keyword in analysis_keywords)
+        # 2. 知识库检索关键词
+        search_keywords = ['查找', '搜索', '寻找', '检索', '查询', '找', '搜', '查', '看']
+        analysis_keywords = ['分析', '检查', '审查', '评估', '对比', '确认', '核查', '检验']
+        document_keywords = ['文档中', '资料里', '报告显示', '数据表明', '文件夹的内容', '目录下']
+        content_keywords = ['内容', '信息', '数据', '资料']
+        
+        # 3. 普通聊天关键词
+        question_keywords = ['什么是', '如何', '为什么', '请解释', '请介绍', '什么叫']
+        advice_keywords = ['建议', '推荐', '意见', '看法', '评价', '怎么办']
+        help_keywords = ['帮我写', '帮我生成', '给我一个例子', '教我', '指导']
+        knowledge_keywords = ['原理', '概念', '定义', '特点', '优缺点', '方法']
+        
+        # 检测创建操作意图（MCP调用）
+        has_create_keyword = any(keyword in query_lower for keyword in create_keywords)
+        has_file_extension = any(ext in query_lower for ext in file_extensions)
+        has_file_keyword = any(keyword in query_lower for keyword in file_keywords)
         has_folder_keyword = any(keyword in query_lower for keyword in folder_keywords)
         
-        if has_analysis_keyword and has_folder_keyword:
-            return {
-                "intent_type": "folder_analysis",
-                "confidence": 0.9,
-                "action_type": "analyze_folder",
-                "parameters": {
-                    "folder_name": None,  # 需要进一步解析
-                    "analysis_type": "缺失内容分析"
-                },
-                "reasoning": "检测到分析和文件夹关键词（备用分析）"
-            }
-        
-        # 其次检测搜索意图
-        if any(keyword in query_lower for keyword in search_keywords):
-            return {
-                "intent_type": "vector_search",
-                "confidence": 0.9,
-                "action_type": "search_documents",
-                "parameters": {
-                    "search_keywords": query
-                },
-                "reasoning": "检测到搜索关键词（备用分析）"
-            }
-        
-        # 检测文件创建意图（必须包含文件扩展名）
-        has_file_extension = any(ext in query_lower for ext in file_extensions)
-        if has_file_extension:
+        # 优先检测文件创建
+        if has_create_keyword and (has_file_extension or has_file_keyword):
             return {
                 "intent_type": "mcp_action",
                 "confidence": 0.9,
                 "action_type": "create_file",
                 "parameters": {
-                    "file_name": None,  # 需要进一步解析
+                    "file_name": None,
                     "parent_folder": None
                 },
-                "reasoning": "检测到文件扩展名，判断为创建文件（备用分析）"
+                "reasoning": "检测到创建和文件关键词（传统分析）",
+                "is_fallback": True,
+                "scenario": scenario
             }
         
-        # 检测文件夹创建意图
-        folder_keywords = ['文件夹', '目录', '文件夹']
-        create_keywords = ['创建', '新建', '建立', '建']
-        
-        has_folder_keyword = any(keyword in query_lower for keyword in folder_keywords)
-        has_create_keyword = any(keyword in query_lower for keyword in create_keywords)
-        
-        if has_folder_keyword and has_create_keyword:
+        # 检测文件夹创建
+        if has_create_keyword and has_folder_keyword:
             return {
                 "intent_type": "mcp_action",
                 "confidence": 0.9,
                 "action_type": "create_folder",
                 "parameters": {
-                    "folder_name": None,  # 需要进一步解析
+                    "folder_name": None,
                     "parent_folder": None
                 },
-                "reasoning": "检测到文件夹和创建关键词（备用分析）"
+                "reasoning": "检测到创建和文件夹关键词（传统分析）",
+                "is_fallback": True,
+                "scenario": scenario
+            }
+        
+        # 检测普通聊天意图
+        has_question_keyword = any(keyword in query_lower for keyword in question_keywords)
+        has_advice_keyword = any(keyword in query_lower for keyword in advice_keywords)
+        has_help_keyword = any(keyword in query_lower for keyword in help_keywords)
+        has_knowledge_keyword = any(keyword in query_lower for keyword in knowledge_keywords)
+        
+        # 如果包含明显的聊天关键词，且没有文档相关词汇
+        has_document_keyword = any(keyword in query_lower for keyword in document_keywords)
+        
+        if (has_question_keyword or has_advice_keyword or has_help_keyword or has_knowledge_keyword) and not has_document_keyword:
+            return {
+                "intent_type": "normal_chat",
+                "confidence": 0.8,
+                "action_type": "chat",
+                "parameters": {
+                    "chat_topic": query
+                },
+                "reasoning": "检测到聊天询问关键词，且无文档相关词汇（传统分析）",
+                "is_fallback": True,
+                "scenario": scenario
+            }
+        
+        # 检测知识库检索意图
+        has_search_keyword = any(keyword in query_lower for keyword in search_keywords)
+        has_analysis_keyword = any(keyword in query_lower for keyword in analysis_keywords)
+        has_content_keyword = any(keyword in query_lower for keyword in content_keywords)
+        
+        # 如果包含搜索、分析关键词，或者明确提到文档
+        if has_search_keyword or has_analysis_keyword or has_document_keyword or (has_content_keyword and len(query) > 5):
+            return {
+                "intent_type": "knowledge_search",
+                "confidence": 0.8,
+                "action_type": "search_documents",
+                "parameters": {
+                    "search_keywords": query
+                },
+                "reasoning": "检测到搜索、分析或文档相关关键词（传统分析）",
+                "is_fallback": True,
+                "scenario": scenario
             }
         
         # 如果只有创建关键词，默认为创建文件夹
-        elif has_create_keyword:
+        if has_create_keyword:
             return {
                 "intent_type": "mcp_action",
                 "confidence": 0.7,
@@ -975,18 +1064,36 @@ class LLMService:
                     "folder_name": None,
                     "parent_folder": None
                 },
-                "reasoning": "检测到创建关键词，默认为创建文件夹（备用分析）"
+                "reasoning": "检测到创建关键词，默认为创建文件夹（传统分析）",
+                "is_fallback": True,
+                "scenario": scenario
             }
         
-        # 默认为搜索
+        # 对于短查询或简单问题，倾向于普通聊天
+        if len(query.strip()) <= 10 or '?' in query or '？' in query:
+            return {
+                "intent_type": "normal_chat",
+                "confidence": 0.6,
+                "action_type": "chat",
+                "parameters": {
+                    "chat_topic": query
+                },
+                "reasoning": "查询较短或包含疑问符号，判断为普通聊天（传统分析）",
+                "is_fallback": True,
+                "scenario": scenario
+            }
+        
+        # 默认为知识库检索（因为用户可能想在文档中找答案）
         return {
-            "intent_type": "vector_search",
-            "confidence": 0.6,
+            "intent_type": "knowledge_search",
+            "confidence": 0.5,
             "action_type": "search_documents",
             "parameters": {
                 "search_keywords": query
             },
-            "reasoning": "未检测到明确的操作意图，默认为搜索请求（备用分析）"
+            "reasoning": "未检测到明确意图，默认为知识库检索（传统分析）",
+            "is_fallback": True,
+            "scenario": scenario
         }
     
     @staticmethod

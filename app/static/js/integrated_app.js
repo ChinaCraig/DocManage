@@ -2665,162 +2665,325 @@ async function sendChatMessage() {
     addChatMessage('user', message);
     chatInput.value = '';
     
-    // 智能选择搜索策略并显示提示
-    const searchStrategy = determineSearchStrategy(message, selectedSimilarity);
-    showSearchStrategyHint(searchStrategy, message);
-    
     // 显示AI正在思考的状态
     const thinkingId = addChatMessage('assistant', '', true);
     
     try {
-        // 构建请求数据
+        // 构建请求数据 - 启用新的意图识别
         const requestData = {
             query: message,
             top_k: 5,
             similarity_level: selectedSimilarity,
             llm_model: llmConfig.model,
             enable_llm: llmConfig.isAvailable,
-            enable_mcp: enableMCP
+            enable_mcp: enableMCP,
+            enable_intent_analysis: true  // 启用后端意图分析
         };
         
-        let response;
-        if (searchStrategy === 'hybrid') {
-            // 使用混合搜索
-            response = await fetch('/api/search/hybrid', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(requestData)
-            });
-        } else {
-            // 使用纯语义搜索
-            response = await fetch('/api/search/', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(requestData)
-            });
-        }
+        // 统一使用语义搜索接口，让后端根据意图决定如何处理
+        const response = await fetch('/api/search/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestData)
+        });
         
         const result = await response.json();
         
         // 移除thinking消息
         removeChatMessage(thinkingId);
         
-        // 隐藏搜索策略提示
-        hideSearchStrategyHint();
-        
         if (result.success) {
-            // 检查是否是文档分析结果
-            if (result.data.is_analysis && result.data.analysis_result) {
-                // 对于分析结果，只显示分析内容
-                const analysisMessage = formatAnalysisResults(result.data);
-                addChatMessage('assistant', analysisMessage);
-                
-                // 如果分析成功且有文档，自动预览该文档
-                if (result.data.analysis_result.type === 'success' && result.data.analysis_result.document) {
-                    const document = result.data.analysis_result.document;
-                    highlightDocumentInTree(document.id);
-                    previewDocument(document);
-                }
-            } else if ((result.data.file_results && result.data.file_results.length > 0) || 
-                      (result.data.results && result.data.results.length > 0) ||
-                      (result.data.mcp_results && result.data.mcp_results.length > 0)) {
-                // 普通搜索结果处理
-                
-                // 如果有LLM答案，先显示LLM答案
-                if (result.data.llm_info && result.data.llm_info.answer) {
-                    const llmMessage = formatLLMAnswer(result.data.llm_info.answer, result.data.llm_info);
-                    addChatMessage('assistant', llmMessage);
-                }
-                
-                // 如果有MCP工具结果，显示工具执行结果
-                if (result.data.mcp_results && result.data.mcp_results.length > 0) {
-                    try {
-                        const mcpMessage = formatMCPResults(result.data.mcp_results);
-                        addChatMessage('assistant', mcpMessage);
-                        
-                        // 检查是否需要刷新文档树
-                        const needRefresh = result.data.mcp_results.some(r => 
-                            r && r.arguments && r.arguments.action === 'refresh_tree'
-                        );
-                        
-                        if (needRefresh) {
-                            // 延迟刷新，让用户看到操作结果
-                            setTimeout(() => {
-                                try {
-                                    loadFileTree();
-                                    showSuccess('文档树已更新');
-                                } catch (refreshError) {
-                                    console.error('Failed to refresh file tree:', refreshError);
-                                    showError('文档树刷新失败');
-                                }
-                            }, 1000);
-                        }
-                    } catch (mcpError) {
-                        console.error('Error processing MCP results:', mcpError, result.data.mcp_results);
-                        addChatMessage('assistant', '❌ MCP工具结果处理异常，请查看控制台日志获取详细信息。');
-                    }
-                }
-                
-                // 只有在有搜索结果时才显示搜索结果
-                const fileResults = result.data.file_results || result.data.results || [];
-                if (fileResults.length > 0) {
-                    // 显示搜索结果（优先使用文件级别结果）
-                    const resultMessage = formatFileSearchResults(result.data, message);
-                    addChatMessage('assistant', resultMessage);
-                    
-                    // 如果有搜索结果，自动预览第一个文档
-                    const firstFile = fileResults[0];
-                    const document = firstFile.document || firstFile;
-                    if (document) {
-                        highlightDocumentInTree(document.id);
-                        previewDocument(document);
-                    }
-                } else if (!result.data.mcp_results || result.data.mcp_results.length === 0) {
-                    // 只有在既没有MCP结果又没有搜索结果时，才显示搜索建议
-                    const suggestionMessage = generateSearchSuggestions(message, selectedSimilarity, searchStrategy);
-                    addChatMessage('assistant', suggestionMessage);
-                }
+            // 根据不同的响应类型进行处理
+            const data = result.data;
+            
+            // 检查是否为新的标准化格式
+            if (data.content && Array.isArray(data.content)) {
+                // 使用新的标准化消息渲染器
+                handleStandardizedMessage(data);
             } else {
-                // 当没有任何结果时，显示搜索建议
-                const suggestionMessage = generateSearchSuggestions(message, selectedSimilarity, searchStrategy);
-                addChatMessage('assistant', suggestionMessage);
+                // 向后兼容：使用旧格式处理方式
+                const intentAnalysis = data.intent_analysis;
+                
+                // 显示意图分析结果（调试用，可在生产中关闭）
+                if (intentAnalysis) {
+                    console.log('后端意图分析结果:', intentAnalysis);
+                }
+                
+                // 处理不同类型的响应
+                if (data.is_chat && data.chat_response) {
+                    // 普通聊天响应
+                    handleChatResponse(data, intentAnalysis);
+                } else if (data.search_type === 'normal_chat' && data.chat_response) {
+                    // 备用的聊天响应格式
+                    handleChatResponse(data, intentAnalysis);
+                } else if (data.mcp_results && data.mcp_results.length > 0) {
+                    // MCP工具执行结果
+                    handleMCPResponse(data, intentAnalysis);
+                } else if (data.file_results || data.results) {
+                    // 传统搜索结果格式（向后兼容）
+                    handleLegacySearchResponse(data, intentAnalysis);
+                } else {
+                    // 没有找到任何结果
+                    handleNoResultsResponse(message, selectedSimilarity);
+                }
             }
         } else {
             // 处理错误情况
-            const errorMessage = result.error || '搜索时出现未知错误';
+            const errorMessage = result.error || '处理请求时出现未知错误';
             addChatMessage('assistant', `❌ ${errorMessage}`);
         }
     } catch (error) {
         // 确保在任何错误情况下都移除thinking消息
         removeChatMessage(thinkingId);
-        hideSearchStrategyHint();
-        addChatMessage('assistant', '搜索时出现错误，请稍后再试。');
-        console.error('Chat search error:', error);
+        addChatMessage('assistant', '❌ 网络请求失败，请检查连接后重试。');
+        console.error('Chat request error:', error);
     }
 }
 
-function determineSearchStrategy(query, similarityLevel) {
-    // 智能确定搜索策略
-    
-    // 如果查询包含专业术语、缩写、数字等，优先使用混合搜索
-    const hasSpecialTerms = /[A-Z]{2,}|[a-zA-Z]+\d+|\d{2,}|[a-zA-Z]{2,4}/.test(query);
-    
-    // 如果查询很短（少于4个字符）或包含特殊术语，使用混合搜索
-    if (query.length <= 4 || hasSpecialTerms) {
-        return 'hybrid';
+// 处理标准化消息格式
+function handleStandardizedMessage(message) {
+    // 检查是否加载了MessageRenderer
+    if (typeof MessageRenderer === 'undefined') {
+        console.warn('MessageRenderer未加载，降级到基础渲染');
+        handleBasicStandardizedMessage(message);
+        return;
     }
     
-    // 如果相似度要求是高相关性，但查询较短，也使用混合搜索
-    if (similarityLevel === 'high' && query.length <= 6) {
-        return 'hybrid';
+    try {
+        // 使用MessageRenderer渲染消息
+        const messageElement = MessageRenderer.renderMessage(message);
+        
+        // 获取聊天容器并添加消息
+        const chatMessages = document.getElementById('chatMessages');
+        if (chatMessages) {
+            chatMessages.appendChild(messageElement);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+        
+        // 处理特殊交互（如文件预览）
+        handleStandardizedMessageInteractions(message);
+        
+    } catch (error) {
+        console.error('标准化消息渲染失败:', error);
+        handleBasicStandardizedMessage(message);
+    }
+}
+
+// 基础的标准化消息处理（备用方案）
+function handleBasicStandardizedMessage(message) {
+    let content = '';
+    
+    if (message.content && Array.isArray(message.content)) {
+        message.content.forEach(item => {
+            switch (item.type) {
+                case 'text':
+                    content += `<div class="message-text">${escapeHtml(item.data)}</div>`;
+                    break;
+                case 'markdown':
+                    content += `<div class="message-markdown">${item.data.replace(/\n/g, '<br>')}</div>`;
+                    break;
+                case 'table':
+                    content += renderBasicTable(item.data);
+                    break;
+                case 'tool_call':
+                    content += `<div class="message-tool-call">🛠️ 工具调用: ${item.data.tool}</div>`;
+                    break;
+                case 'file_link':
+                    content += `<div class="message-file-link">
+                        <a href="${item.data.url}" target="_blank">📄 ${item.data.filename}</a>
+                    </div>`;
+                    break;
+                default:
+                    content += `<div class="message-unknown">[${item.type}] ${JSON.stringify(item.data)}</div>`;
+            }
+        });
     }
     
-    // 其他情况使用语义搜索
-    return 'semantic';
+    addChatMessage('assistant', content);
+}
+
+// 基础表格渲染
+function renderBasicTable(tableData) {
+    if (!tableData.headers || !tableData.rows) {
+        return '<div class="table-error">表格数据格式错误</div>';
+    }
+    
+    let html = '<table class="table table-striped table-sm message-table">';
+    
+    // 表头
+    html += '<thead><tr>';
+    tableData.headers.forEach(header => {
+        html += `<th>${escapeHtml(header)}</th>`;
+    });
+    html += '</tr></thead>';
+    
+    // 表体
+    html += '<tbody>';
+    tableData.rows.forEach(row => {
+        html += '<tr>';
+        row.forEach(cell => {
+            html += `<td>${escapeHtml(String(cell))}</td>`;
+        });
+        html += '</tr>';
+    });
+    html += '</tbody></table>';
+    
+    return html;
+}
+
+// 处理标准化消息的特殊交互
+function handleStandardizedMessageInteractions(message) {
+    // 如果有文件链接，自动预览第一个文档
+    if (message.legacy_data && message.legacy_data.file_results && message.legacy_data.file_results.length > 0) {
+        const firstFile = message.legacy_data.file_results[0];
+        const document = firstFile.document;
+        if (document) {
+            highlightDocumentInTree(document.id);
+            // 延迟预览以避免同时操作
+            setTimeout(() => {
+                previewDocument(document);
+            }, 500);
+        }
+    }
+    
+    // 如果是MCP操作且成功，刷新文件树
+    if (message.legacy_data && message.legacy_data.mcp_results) {
+        const hasSuccessfulCreation = message.legacy_data.mcp_results.some(result => 
+            !result.error && result.tool_name && result.tool_name.includes('create')
+        );
+        
+        if (hasSuccessfulCreation) {
+            setTimeout(() => {
+                loadFileTree();
+            }, 1000);
+        }
+    }
+}
+
+// 处理普通聊天响应
+function handleChatResponse(data, intentAnalysis) {
+    const chatResponse = data.chat_response;
+    
+    let message = `<div class="chat-response-container">
+        <div class="chat-response-header">
+            <i class="bi bi-chat-text"></i> <strong>AI助手回答</strong>`;
+    
+    // 显示意图分析信息
+    if (intentAnalysis) {
+        message += `<div class="intent-info">
+            <span class="intent-badge chat"><i class="bi bi-chat-dots"></i> 普通对话</span>
+            <span class="confidence-score">置信度: ${(intentAnalysis.confidence * 100).toFixed(1)}%</span>
+        </div>`;
+    }
+    
+    message += `</div>
+        <div class="chat-response-content">
+            ${escapeHtml(chatResponse).replace(/\n/g, '<br>')}
+        </div>
+    </div>`;
+    
+    addChatMessage('assistant', message);
+}
+
+// 处理知识库检索响应
+function handleKnowledgeSearchResponse(data, intentAnalysis) {
+    let message = `<div class="knowledge-search-container">
+        <div class="knowledge-search-header">
+            <i class="bi bi-search"></i> <strong>知识库检索结果</strong>`;
+    
+    // 显示意图分析信息
+    if (intentAnalysis) {
+        message += `<div class="intent-info">
+            <span class="intent-badge search"><i class="bi bi-database"></i> 知识库检索</span>
+            <span class="confidence-score">置信度: ${(intentAnalysis.confidence * 100).toFixed(1)}%</span>
+        </div>`;
+    }
+    
+    message += `</div>`;
+    
+    // 使用标准化消息组件渲染结果
+    addChatMessage('assistant', data);
+    
+    // 如果有文件结果，自动预览第一个文档
+    const legacyData = data.legacy_data;
+    if (legacyData && legacyData.file_results && legacyData.file_results.length > 0) {
+        const firstFile = legacyData.file_results[0];
+        const document = firstFile.document;
+        if (document) {
+            highlightDocumentInTree(document.id);
+            previewDocument(document);
+        }
+    }
+}
+
+// 处理MCP工具响应
+function handleMCPResponse(data, intentAnalysis) {
+    let message = `<div class="mcp-response-container">
+        <div class="mcp-response-header">
+            <i class="bi bi-tools"></i> <strong>操作执行结果</strong>`;
+    
+    // 显示意图分析信息
+    if (intentAnalysis) {
+        message += `<div class="intent-info">
+            <span class="intent-badge mcp"><i class="bi bi-gear-fill"></i> MCP操作</span>
+            <span class="confidence-score">置信度: ${(intentAnalysis.confidence * 100).toFixed(1)}%</span>
+        </div>`;
+    }
+    
+    message += `</div>`;
+    
+    // 添加MCP结果
+    const mcpMessage = formatMCPResults(data.mcp_results);
+    addChatMessage('assistant', mcpMessage);
+    
+    // 如果创建了文件夹，刷新文件树
+    const hasSuccessfulCreation = data.mcp_results.some(result => 
+        !result.error && result.tool_name && result.tool_name.includes('create')
+    );
+    
+    if (hasSuccessfulCreation) {
+        setTimeout(() => {
+            loadFileTree(); // 刷新文件树
+        }, 1000);
+    }
+}
+
+// 处理传统搜索结果（向后兼容）
+function handleLegacySearchResponse(data, intentAnalysis) {
+    // 显示意图分析信息（如果有）
+    if (intentAnalysis && intentAnalysis.intent_type === 'knowledge_search') {
+        const message = `<div class="intent-analysis-info">
+            <span class="intent-badge search"><i class="bi bi-database"></i> 知识库检索</span>
+            <span class="confidence-score">置信度: ${(intentAnalysis.confidence * 100).toFixed(1)}%</span>
+        </div>`;
+        addChatMessage('assistant', message);
+    }
+    
+    // 处理文件级别搜索结果
+    if (data.file_results) {
+        const fileMessage = formatFileSearchResults(data, data.query);
+        addChatMessage('assistant', fileMessage);
+    }
+    
+    // 处理块级别搜索结果
+    if (data.results) {
+        const chunkMessage = formatSearchResults(data.results, data.query);
+        addChatMessage('assistant', chunkMessage);
+    }
+    
+    // 如果有LLM答案
+    if (data.llm_answer) {
+        const llmMessage = formatLLMAnswer(data.llm_answer, data.llm_info);
+        addChatMessage('assistant', llmMessage);
+    }
+}
+
+// 处理无结果响应
+function handleNoResultsResponse(query, similarityLevel) {
+    const suggestionMessage = generateSearchSuggestions(query, similarityLevel, 'semantic');
+    addChatMessage('assistant', suggestionMessage);
 }
 
 // LLM答案格式化函数
@@ -3154,6 +3317,15 @@ function addChatMessage(sender, content, isThinking = false) {
     const chatMessages = document.getElementById('chatMessages');
     const messageId = 'msg-' + Date.now();
     
+    // 如果content是标准化消息对象，使用新的渲染器
+    if (content && typeof content === 'object' && content.content && Array.isArray(content.content)) {
+        const messageElement = MessageRenderer.renderMessage(content);
+        chatMessages.appendChild(messageElement);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+        return content.message_id || messageId;
+    }
+    
+    // 兼容原有的简单文本消息格式
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${sender}`;
     messageDiv.id = messageId;

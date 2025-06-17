@@ -1,12 +1,15 @@
+import os
+import json
+import time
+import logging
 from flask import Blueprint, request, jsonify
-from app.models import DocumentNode, SystemConfig
-from app.services.vectorization import VectorServiceAdapter
+from sqlalchemy import or_, and_, desc
+from app.models.document_models import DocumentNode, db
+from app.services.vectorization.vector_service_adapter import VectorServiceAdapter
 from app.services.llm_service import LLMService
 # 旧的MCP服务已移除
 from config import Config
-import logging
 import asyncio
-import time
 
 logger = logging.getLogger(__name__)
 
@@ -91,63 +94,93 @@ def semantic_search():
         skip_search = False
         intent_analysis = None
         
-        # 使用LLM进行智能意图分析
-        if Config.MCP_CONFIG.get('enabled', False) and llm_model:
+        # 使用专用的意图识别模型进行智能意图分析
+        if Config.ENABLE_INTENT_ANALYSIS and enable_mcp:
             try:
                 from app.services.llm_service import LLMService
-                intent_analysis = LLMService.analyze_user_intent(query_text, llm_model)
-                logger.info(f"LLM意图分析结果: {intent_analysis}")
+                # 使用专用的意图识别模型
+                intent_llm_model = f"{Config.INTENT_ANALYSIS_LLM_PROVIDER}:{Config.INTENT_ANALYSIS_LLM_MODEL}"
+                intent_analysis = LLMService.analyze_user_intent(query_text, intent_llm_model)
+                logger.info(f"意图分析结果: {intent_analysis}")
                 
-                # 根据LLM分析结果决定是否执行特殊操作
-                if (intent_analysis.get('intent_type') == 'folder_analysis' and 
-                    intent_analysis.get('confidence', 0) > 0.6 and
-                    intent_analysis.get('action_type') == 'analyze_folder'):
-                    
-                    logger.info(f"LLM分析确认为文件夹分析操作，跳过语义搜索: {query_text}")
+                # 使用配置的置信度阈值
+                confidence_threshold = Config.INTENT_ANALYSIS_CONFIDENCE_THRESHOLD
+                intent_type = intent_analysis.get('intent_type', 'knowledge_search')
+                confidence = intent_analysis.get('confidence', 0)
+                
+                # 根据新的意图分类处理
+                if intent_type == 'normal_chat' and confidence > confidence_threshold:
+                    # 普通聊天：直接LLM问答
+                    logger.info(f"执行普通聊天操作: {query_text}")
                     skip_search = True
                     
-                    # 执行文件夹分析
-                    from app.services.folder_analysis_service import FolderAnalysisService
-                    
                     try:
-                        analysis_result = FolderAnalysisService.analyze_folder_completeness(query_text, llm_model, intent_analysis)
-                        logger.info(f"文件夹分析完成")
+                        # 使用用户选择的LLM模型进行聊天
+                        chat_response = LLMService.generate_answer(
+                            query=query_text,
+                            context="",  # 普通聊天不需要文档上下文
+                            llm_model=llm_model or intent_llm_model,
+                            style="conversational"
+                        )
+                        logger.info(f"普通聊天响应生成完成")
                         
-                        # 构建分析响应
-                        data = {
+                        # 构建聊天响应数据
+                        response_data = {
                             'query': query_text,
-                            'is_analysis': True,
-                            'analysis_result': analysis_result,
-                            'search_type': 'folder_analysis'
-                        }
-                        
-                        # 添加意图分析结果
-                        if intent_analysis:
-                            data['intent_analysis'] = {
+                            'is_chat': True,
+                            'chat_response': chat_response,
+                            'search_type': 'normal_chat',
+                            'intent_analysis': {
                                 'intent_type': intent_analysis.get('intent_type'),
                                 'confidence': intent_analysis.get('confidence'),
                                 'action_type': intent_analysis.get('action_type'),
                                 'reasoning': intent_analysis.get('reasoning'),
-                                'used_llm': True
+                                'used_llm': True,
+                                'model': llm_model or intent_llm_model,
+                                'prompt_source': intent_analysis.get('prompt_source', 'config_file'),
+                                'confidence_threshold': confidence_threshold
                             }
+                        }
+                        
+                        # 转换为标准化消息格式
+                        message_content = []
+                        
+                        # 添加意图识别结果
+                        message_content.append({
+                            "type": "text", 
+                            "data": f"💬 普通对话: {intent_analysis.get('reasoning', '已识别为一般对话交流')}"
+                        })
+                        
+                        # 添加聊天响应
+                        message_content.append({
+                            "type": "markdown",
+                            "data": chat_response
+                        })
+                        
+                        # 构建标准化响应格式
+                        standardized_response = {
+                            "message_id": f"msg-{int(time.time())}-{hash(query_text) % 1000:03d}",
+                            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                            "role": "assistant",
+                            "content": message_content,
+                            "legacy_data": response_data
+                        }
                         
                         return jsonify({
                             'success': True,
-                            'data': data
+                            'data': standardized_response
                         })
                         
-                    except Exception as analysis_error:
-                        logger.error(f"文件夹分析失败: {analysis_error}")
+                    except Exception as chat_error:
+                        logger.error(f"普通聊天处理失败: {chat_error}")
                         return jsonify({
                             'success': False,
-                            'error': f"文件夹分析失败: {str(analysis_error)}"
+                            'error': f"聊天处理失败: {str(chat_error)}"
                         }), 500
                 
-                elif (intent_analysis.get('intent_type') == 'mcp_action' and 
-                    intent_analysis.get('confidence', 0) > 0.6 and
-                    intent_analysis.get('action_type') in ['create_file', 'create_folder']):
-                    
-                    logger.info(f"LLM分析确认为MCP操作，跳过语义搜索: {query_text}")
+                elif intent_type == 'mcp_action' and confidence > confidence_threshold and intent_analysis.get('action_type') in ['create_file', 'create_folder']:
+                    # MCP调用：保持现有实现
+                    logger.info(f"执行MCP操作: {query_text}")
                     skip_search = True
                     
                     # 使用简化的MCP服务执行操作
@@ -160,6 +193,71 @@ def semantic_search():
                             simple_mcp_service.execute_tool_sequence(query_text)
                         )
                         logger.info(f"MCP工具执行完成，共 {len(mcp_tool_results)} 个步骤")
+                        
+                        # 构建MCP响应数据
+                        response_data = {
+                            'query': query_text,
+                            'mcp_results': mcp_tool_results,
+                            'search_type': 'mcp_action',
+                            'intent_analysis': {
+                                'intent_type': intent_analysis.get('intent_type'),
+                                'confidence': intent_analysis.get('confidence'),
+                                'action_type': intent_analysis.get('action_type'),
+                                'reasoning': intent_analysis.get('reasoning'),
+                                'used_llm': True,
+                                'model': llm_model or intent_analysis.get('model_used'),
+                                'prompt_source': intent_analysis.get('prompt_source', 'config_file'),
+                                'confidence_threshold': confidence_threshold
+                            }
+                        }
+                        
+                        # 转换为标准化消息格式
+                        message_content = []
+                        
+                        # 添加意图识别结果
+                        message_content.append({
+                            "type": "text",
+                            "data": f"🎯 识别为MCP操作: {intent_analysis.get('reasoning', '已识别为文件/文件夹操作')}"
+                        })
+                        
+                        # 添加MCP工具执行结果
+                        for mcp_result in mcp_tool_results:
+                            # 处理dataclass对象或字典
+                            error = getattr(mcp_result, 'error', None) if hasattr(mcp_result, 'error') else mcp_result.get('error')
+                            if error:
+                                message_content.append({
+                                    "type": "text",
+                                    "data": f"❌ 工具执行失败: {error}"
+                                })
+                            else:
+                                tool_name = getattr(mcp_result, 'tool_name', None) if hasattr(mcp_result, 'tool_name') else mcp_result.get('tool_name', 'unknown')
+                                arguments = getattr(mcp_result, 'arguments', {}) if hasattr(mcp_result, 'arguments') else mcp_result.get('arguments', {})
+                                result = getattr(mcp_result, 'result', None) if hasattr(mcp_result, 'result') else mcp_result.get('result')
+                                
+                                message_content.append({
+                                    "type": "tool_call",
+                                    "data": {
+                                        "tool": tool_name,
+                                        "params": arguments,
+                                        "result": result,
+                                        "user_visible": True
+                                    }
+                                })
+                        
+                        # 构建标准化响应格式
+                        standardized_response = {
+                            "message_id": f"msg-{int(time.time())}-{hash(query_text) % 1000:03d}",
+                            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                            "role": "assistant",
+                            "content": message_content,
+                            "legacy_data": response_data
+                        }
+                        
+                        return jsonify({
+                            'success': True,
+                            'data': standardized_response
+                        })
+                        
                     except Exception as mcp_error:
                         logger.error(f"MCP工具执行失败: {mcp_error}")
                         mcp_tool_results = [{
@@ -169,47 +267,52 @@ def semantic_search():
                             'error': f"MCP工具执行失败: {str(mcp_error)}",
                             'timestamp': time.time()
                         }]
+                        
+                        # 错误情况也返回标准化格式
+                        message_content = [{
+                            "type": "text",
+                            "data": f"❌ MCP操作失败: {str(mcp_error)}"
+                        }]
+                        
+                        standardized_response = {
+                            "message_id": f"msg-{int(time.time())}-{hash(query_text) % 1000:03d}",
+                            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                            "role": "assistant",
+                            "content": message_content,
+                            "legacy_data": {'error': str(mcp_error)}
+                        }
+                        
+                        return jsonify({
+                            'success': True,
+                            'data': standardized_response
+                        })
                     finally:
                         loop.close()
                         
+                # 对于 knowledge_search 意图，继续执行向量检索（不需要特殊处理）
+                elif intent_type == 'knowledge_search':
+                    logger.info(f"执行知识库检索操作: {query_text}")
+                    # 继续向下执行语义搜索逻辑
+                    pass
+                else:
+                    # 置信度不够或未识别的意图，默认执行知识库检索
+                    logger.info(f"意图不明确或置信度不足，执行默认知识库检索: {query_text}")
+                        
             except Exception as e:
-                logger.error(f"LLM意图分析失败，回退到关键词分析: {e}")
-                # 回退到原来的关键词检测逻辑
-                query_lower = query_text.lower()
-                create_folder_keywords = ['创建', '新建', '文件夹', '目录', '建立']
-                create_file_keywords = ['创建', '新建', '文件', '文档']
-                file_extensions = ['.txt', '.doc', '.docx', '.pdf', '.xls', '.xlsx', '.jpg', '.png', '.mp4', '.md']
-                
-                create_folder_detected = any(keyword in query_lower for keyword in create_folder_keywords)
-                create_file_detected = (any(keyword in query_lower for keyword in create_file_keywords) and 
-                                      not create_folder_detected) or any(ext in query_lower for ext in file_extensions)
-                
-                if create_folder_detected or create_file_detected:
-                    logger.info(f"关键词检测到文件操作意图，跳过语义搜索: {query_text}")
-                    skip_search = True
-                    
-                    from app.services.mcp_service_simple import simple_mcp_service
-                    
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    try:
-                        mcp_tool_results = loop.run_until_complete(
-                            simple_mcp_service.execute_tool_sequence(query_text)
-                        )
-                        logger.info(f"MCP工具执行完成，共 {len(mcp_tool_results)} 个步骤")
-                    except Exception as mcp_error:
-                        logger.error(f"MCP工具执行失败: {mcp_error}")
-                        mcp_tool_results = [{
-                            'tool_name': 'error',
-                            'arguments': {},
-                            'result': None,
-                            'error': f"MCP工具执行失败: {str(mcp_error)}",
-                            'timestamp': time.time()
-                        }]
-                    finally:
-                        loop.close()
+                logger.error(f"意图分析失败: {e}")
+                # 降级到知识库检索
+                intent_analysis = {
+                    "intent_type": "knowledge_search",
+                    "confidence": 0.5,
+                    "action_type": "search_documents",
+                    "reasoning": f"意图分析失败，降级到知识库检索: {str(e)}",
+                    "used_llm": False,
+                    "error": str(e),
+                    "model_used": f"{Config.INTENT_ANALYSIS_LLM_PROVIDER}:{Config.INTENT_ANALYSIS_LLM_MODEL}",
+                    "prompt_source": "config_file"
+                }
         
-        # 只有在没有MCP操作时才执行语义搜索
+        # 只有在没有特殊处理时才执行语义搜索（知识库检索）
         if not skip_search:
             try:
                 # 进行关键词提取以优化搜索
@@ -321,75 +424,170 @@ def semantic_search():
                 llm_answer = None
                 reranked = False
         
-
-        
         # 构建响应数据
-        data = {
+        response_data = {
             'query': query_text,
-            'results': search_results,
-            'total_results': len(search_results),
-            'search_type': 'semantic'
-        }
-        
-        # 添加搜索配置信息
-        if not skip_search and 'min_score' in locals():
-            data['min_score'] = min_score
-        
-        # 如果进行了文件级别聚合，也返回文件结果（与混合搜索保持一致）
-        if not skip_search and 'file_results' in locals() and file_results:
-            data['file_results'] = file_results
-            data['total_files'] = len(file_results)
-        
-        # 添加LLM处理信息
-        if llm_model:
-            data['llm_info'] = {
-                'used': True,
+            'results': file_results,
+            'file_results': file_results,  # 保持向后兼容
+            'total_results': len(file_results),
+            'search_type': 'semantic',
+            'similarity_level': 'medium',  # 默认相似度级别
+            'min_score': min_score if not skip_search else 0.0,
+            'optimized_query': search_query if not skip_search else query_text,
+            'original_query': query_text,
+            'reranked': reranked,
+            'mcp_results': mcp_tool_results if mcp_tool_results else [],
+            'llm_info': {
                 'model': llm_model,
-                'original_query': query_text,
-                'optimized_query': search_query if not skip_search and 'search_query' in locals() else query_text,
-                'query_optimized': (search_query != query_text) if not skip_search and 'search_query' in locals() else False,
-                'reranked': reranked if 'reranked' in locals() else False,
-                'answer': llm_answer if 'llm_answer' in locals() else None
-            }
-        else:
-            data['llm_info'] = {
-                'used': False
-            }
+                'answer': llm_answer if 'llm_answer' in locals() else None,
+                'enabled': llm_model is not None
+            } if 'llm_answer' in locals() and llm_answer else None
+        }
         
         # 添加意图分析结果
         if intent_analysis:
-            data['intent_analysis'] = {
+            response_data['intent_analysis'] = {
                 'intent_type': intent_analysis.get('intent_type'),
                 'confidence': intent_analysis.get('confidence'),
                 'action_type': intent_analysis.get('action_type'),
                 'reasoning': intent_analysis.get('reasoning'),
-                'used_llm': True
+                'used_llm': True,
+                'model': intent_analysis.get('model_used'),
+                'prompt_source': intent_analysis.get('prompt_source', 'config_file')
             }
         
-        # 添加关键词提取结果
-        if not skip_search and 'keyword_extraction' in locals() and keyword_extraction:
-            data['keyword_extraction'] = {
-                'original_query': keyword_extraction.get('original_query'),
-                'keywords': keyword_extraction.get('keywords'),
-                'optimized_query': keyword_extraction.get('optimized_query'),
-                'reasoning': keyword_extraction.get('reasoning'),
-                'used_llm': keyword_extraction.get('used_llm', False)
-            }
+        # 添加关键词提取信息
+        if 'keyword_extraction' in locals() and keyword_extraction:
+            response_data['keyword_extraction'] = keyword_extraction
         
-        # 如果有MCP工具结果，添加到响应中
+        # 转换为标准化消息格式
+        message_content = []
+        
+        # 1. 添加意图分析结果（如果有）
+        if intent_analysis and intent_analysis.get('confidence', 0) > Config.INTENT_ANALYSIS_CONFIDENCE_THRESHOLD:
+            message_content.append({
+                "type": "text",
+                "data": f"🎯 意图识别: {intent_analysis.get('reasoning', '已识别用户意图')}"
+            })
+        
+        # 2. 添加LLM答案（如果有）
+        if 'llm_answer' in locals() and llm_answer:
+            message_content.append({
+                "type": "markdown",
+                "data": llm_answer
+            })
+        
+        # 3. 添加MCP工具执行结果（如果有）
         if mcp_tool_results:
-            data['mcp_results'] = [{
-                'tool_name': result.tool_name if hasattr(result, 'tool_name') else result.get('tool_name'),
-                'arguments': result.arguments if hasattr(result, 'arguments') else result.get('arguments', {}),
-                'result': result.result if hasattr(result, 'result') else result.get('result'),
-                'error': result.error if hasattr(result, 'error') else result.get('error'),
-                'timestamp': result.timestamp if hasattr(result, 'timestamp') else result.get('timestamp')
-            } for result in mcp_tool_results]
+            for mcp_result in mcp_tool_results:
+                # 处理dataclass对象或字典
+                error = getattr(mcp_result, 'error', None) if hasattr(mcp_result, 'error') else mcp_result.get('error') if isinstance(mcp_result, dict) else None
+                if error:
+                    message_content.append({
+                        "type": "text",
+                        "data": f"❌ 工具执行失败: {error}"
+                    })
+                else:
+                    tool_name = getattr(mcp_result, 'tool_name', None) if hasattr(mcp_result, 'tool_name') else mcp_result.get('tool_name', 'unknown') if isinstance(mcp_result, dict) else 'unknown'
+                    arguments = getattr(mcp_result, 'arguments', {}) if hasattr(mcp_result, 'arguments') else mcp_result.get('arguments', {}) if isinstance(mcp_result, dict) else {}
+                    result = getattr(mcp_result, 'result', None) if hasattr(mcp_result, 'result') else mcp_result.get('result') if isinstance(mcp_result, dict) else None
+                    
+                    message_content.append({
+                        "type": "tool_call",
+                        "data": {
+                            "tool": tool_name,
+                            "params": arguments,
+                            "result": result,
+                            "user_visible": True
+                        }
+                    })
         
-        # 使用与混合搜索一致的响应格式
+        # 4. 添加搜索结果表格（如果有文件结果）
+        if file_results:
+            # 构建搜索结果表格
+            table_headers = ["文档", "相关度", "搜索类型", "内容预览", "操作"]
+            table_rows = []
+            
+            for file_result in file_results[:5]:  # 限制显示前5个结果
+                document = file_result.get('document', {})
+                
+                # 计算平均相关度
+                score = file_result.get('score', 0)
+                score_display = f"{score:.2f}" if score > 0 else "N/A"
+                
+                # 搜索类型
+                search_types = file_result.get('search_types', ['unknown'])
+                search_type_display = "+".join(search_types)
+                
+                # 内容预览（使用最佳chunk）
+                chunks = file_result.get('chunks', [])
+                content_preview = chunks[0].get('text', '')[:100] + "..." if chunks else "无预览"
+                
+                table_rows.append([
+                    document.get('name', '未知文档'),
+                    score_display,
+                    search_type_display,
+                    content_preview,
+                    "📄 预览"
+                ])
+            
+            if table_rows:
+                message_content.append({
+                    "type": "table",
+                    "data": {
+                        "headers": table_headers,
+                        "rows": table_rows
+                    }
+                })
+        
+        # 5. 添加文件链接（如果有搜索结果）
+        if file_results:
+            for file_result in file_results[:3]:  # 前3个文件添加链接
+                document = file_result.get('document', {})
+                if document.get('id'):
+                    message_content.append({
+                        "type": "file_link",
+                        "data": {
+                            "url": f"/api/documents/{document.get('id')}/preview",
+                            "filename": document.get('name', '未知文档'),
+                            "description": f"查看文档: {document.get('name', '未知文档')}"
+                        }
+                    })
+        
+        # 6. 如果没有找到结果，添加建议
+        if not file_results and not mcp_tool_results:
+            message_content.append({
+                "type": "text",
+                "data": "😔 未找到相关内容，建议："
+            })
+            message_content.append({
+                "type": "markdown",
+                "data": f"""
+## 💡 搜索建议
+
+- **调整关键词**: 尝试使用更具体的词汇
+- **降低相似度**: 当前设置为 `medium`，可尝试 `low` 或 `any`
+- **检查拼写**: 确认搜索词拼写正确
+- **使用同义词**: 尝试相关的同义词或近义词
+
+**原始查询**: `{query_text}`  
+**优化查询**: `{search_query if not skip_search else query_text}`
+"""
+            })
+        
+        # 构建标准化响应格式
+        standardized_response = {
+            "message_id": f"msg-{int(time.time())}-{hash(query_text) % 1000:03d}",
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "role": "assistant",
+            "content": message_content,
+            # 保持原有数据结构以确保向后兼容
+            "legacy_data": response_data
+        }
+        
         return jsonify({
             'success': True,
-            'data': data
+            'data': standardized_response
         })
         
     except Exception as e:
@@ -492,16 +690,8 @@ def search_suggestions():
 def search_stats():
     """搜索统计信息"""
     try:
-        # 初始化向量服务
-        milvus_host = SystemConfig.get_config('milvus_host', 'localhost')
-        milvus_port = SystemConfig.get_config('milvus_port', 19530)
-        embedding_model = SystemConfig.get_config('embedding_model')
-        
-        vector_service = VectorServiceAdapter(
-            milvus_host=milvus_host,
-            milvus_port=milvus_port,
-            embedding_model=embedding_model
-        )
+        # 直接使用配置文件中的设置
+        vector_service = VectorServiceAdapter()
         
         # 获取向量统计
         vector_stats = vector_service.get_collection_stats()
@@ -548,6 +738,7 @@ def hybrid_search():
         # LLM相关参数
         use_llm = data.get('enable_llm', data.get('use_llm', False))  # 兼容两种参数名
         llm_model = data.get('llm_model')
+        enable_intent_analysis = data.get('enable_intent_analysis', True)
         
         logger.info(f"收到混合搜索请求 - query: {query_text}, similarity_level: {similarity_level}, use_llm: {use_llm}, llm_model: {llm_model}")
         
@@ -566,45 +757,53 @@ def hybrid_search():
         skip_search = False
         intent_analysis = None
         
-        # 使用LLM进行智能意图分析
-        if Config.MCP_CONFIG.get('enabled', False) and llm_model:
+        # 使用专用的意图识别模型进行智能意图分析
+        if Config.ENABLE_INTENT_ANALYSIS and enable_intent_analysis:
             try:
                 from app.services.llm_service import LLMService
-                intent_analysis = LLMService.analyze_user_intent(query_text, llm_model)
-                logger.info(f"混合搜索LLM意图分析结果: {intent_analysis}")
+                # 使用专用的意图识别模型
+                intent_llm_model = f"{Config.INTENT_ANALYSIS_LLM_PROVIDER}:{Config.INTENT_ANALYSIS_LLM_MODEL}"
+                intent_analysis = LLMService.analyze_user_intent(query_text, intent_llm_model)
+                logger.info(f"意图分析结果: {intent_analysis}")
                 
-                # 根据LLM分析结果决定是否执行特殊操作
+                # 使用配置的置信度阈值
+                confidence_threshold = Config.INTENT_ANALYSIS_CONFIDENCE_THRESHOLD
+                
+                # 根据意图分析结果决定处理方式
                 if (intent_analysis.get('intent_type') == 'folder_analysis' and 
-                    intent_analysis.get('confidence', 0) > 0.6 and
+                    intent_analysis.get('confidence', 0) > confidence_threshold and
                     intent_analysis.get('action_type') == 'analyze_folder'):
                     
-                    logger.info(f"混合搜索LLM分析确认为文件夹分析操作，跳过搜索: {query_text}")
+                    logger.info(f"执行文件夹分析操作: {query_text}")
                     skip_search = True
                     
                     # 执行文件夹分析
                     from app.services.folder_analysis_service import FolderAnalysisService
                     
                     try:
-                        analysis_result = FolderAnalysisService.analyze_folder_completeness(query_text, llm_model, intent_analysis)
-                        logger.info(f"混合搜索文件夹分析完成")
+                        # 使用用户选择的LLM模型进行分析，而不是意图识别模型
+                        analysis_result = FolderAnalysisService.analyze_folder_completeness(
+                            query_text, llm_model or intent_llm_model, intent_analysis
+                        )
+                        logger.info(f"文件夹分析完成")
                         
                         # 构建分析响应
                         response_data = {
                             'query': query_text,
                             'is_analysis': True,
                             'analysis_result': analysis_result,
-                            'search_type': 'folder_analysis'
-                        }
-                        
-                        # 添加意图分析结果
-                        if intent_analysis:
-                            response_data['intent_analysis'] = {
+                            'search_type': 'folder_analysis',
+                            'intent_analysis': {
                                 'intent_type': intent_analysis.get('intent_type'),
                                 'confidence': intent_analysis.get('confidence'),
                                 'action_type': intent_analysis.get('action_type'),
                                 'reasoning': intent_analysis.get('reasoning'),
-                                'used_llm': True
+                                'used_llm': True,
+                                'model': intent_analysis.get('model_used', intent_llm_model),
+                                'prompt_source': intent_analysis.get('prompt_source', 'config_file'),
+                                'confidence_threshold': confidence_threshold
                             }
+                        }
                         
                         return jsonify({
                             'success': True,
@@ -612,17 +811,17 @@ def hybrid_search():
                         })
                         
                     except Exception as analysis_error:
-                        logger.error(f"混合搜索文件夹分析失败: {analysis_error}")
+                        logger.error(f"文件夹分析失败: {analysis_error}")
                         return jsonify({
                             'success': False,
                             'error': f"文件夹分析失败: {str(analysis_error)}"
                         }), 500
                 
                 elif (intent_analysis.get('intent_type') == 'mcp_action' and 
-                    intent_analysis.get('confidence', 0) > 0.6 and
+                    intent_analysis.get('confidence', 0) > confidence_threshold and
                     intent_analysis.get('action_type') in ['create_file', 'create_folder']):
                     
-                    logger.info(f"混合搜索LLM分析确认为MCP操作，跳过搜索: {query_text}")
+                    logger.info(f"执行MCP操作: {query_text}")
                     skip_search = True
                     
                     # 使用简化的MCP服务执行操作
@@ -634,9 +833,9 @@ def hybrid_search():
                         mcp_tool_results = loop.run_until_complete(
                             simple_mcp_service.execute_tool_sequence(query_text)
                         )
-                        logger.info(f"混合搜索MCP工具执行完成，共 {len(mcp_tool_results)} 个步骤")
+                        logger.info(f"MCP工具执行完成，共 {len(mcp_tool_results)} 个步骤")
                     except Exception as mcp_error:
-                        logger.error(f"混合搜索MCP工具执行失败: {mcp_error}")
+                        logger.error(f"MCP工具执行失败: {mcp_error}")
                         mcp_tool_results = [{
                             'tool_name': 'error',
                             'arguments': {},
@@ -648,81 +847,18 @@ def hybrid_search():
                         loop.close()
                         
             except Exception as e:
-                logger.error(f"混合搜索LLM意图分析失败，回退到关键词分析: {e}")
-                # 回退到原来的关键词检测逻辑
-                query_lower = query_text.lower()
-                
-                # 检测文件夹分析意图
-                analysis_keywords = ['分析', '检查', '确认', '对比', '比较', '缺少', '缺失', '完整性', '检验', '核查']
-                folder_keywords = ['文件夹', '目录']
-                
-                analysis_detected = any(keyword in query_lower for keyword in analysis_keywords)
-                folder_detected = any(keyword in query_lower for keyword in folder_keywords)
-                
-                if analysis_detected and folder_detected:
-                    logger.info(f"混合搜索关键词检测到文件夹分析意图，跳过搜索: {query_text}")
-                    skip_search = True
-                    
-                    # 执行文件夹分析
-                    from app.services.folder_analysis_service import FolderAnalysisService
-                    
-                    try:
-                        analysis_result = FolderAnalysisService.analyze_folder_completeness(query_text, llm_model)
-                        logger.info(f"混合搜索关键词检测文件夹分析完成")
-                        
-                        # 构建分析响应
-                        response_data = {
-                            'query': query_text,
-                            'is_analysis': True,
-                            'analysis_result': analysis_result,
-                            'search_type': 'folder_analysis'
-                        }
-                        
-                        return jsonify({
-                            'success': True,
-                            'data': response_data
-                        })
-                        
-                    except Exception as analysis_error:
-                        logger.error(f"混合搜索关键词检测文件夹分析失败: {analysis_error}")
-                        return jsonify({
-                            'success': False,
-                            'error': f"文件夹分析失败: {str(analysis_error)}"
-                        }), 500
-                
-                # 检测MCP操作意图
-                create_folder_keywords = ['创建', '新建', '文件夹', '目录', '建立']
-                create_file_keywords = ['创建', '新建', '文件', '文档']
-                file_extensions = ['.txt', '.doc', '.docx', '.pdf', '.xls', '.xlsx', '.jpg', '.png', '.mp4', '.md']
-                
-                create_folder_detected = any(keyword in query_lower for keyword in create_folder_keywords)
-                create_file_detected = (any(keyword in query_lower for keyword in create_file_keywords) and 
-                                      not create_folder_detected) or any(ext in query_lower for ext in file_extensions)
-                
-                if create_folder_detected or create_file_detected:
-                    logger.info(f"混合搜索关键词检测到文件操作意图，跳过搜索: {query_text}")
-                    skip_search = True
-                    
-                    from app.services.mcp_service_simple import simple_mcp_service
-                    
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    try:
-                        mcp_tool_results = loop.run_until_complete(
-                            simple_mcp_service.execute_tool_sequence(query_text)
-                        )
-                        logger.info(f"混合搜索MCP工具执行完成，共 {len(mcp_tool_results)} 个步骤")
-                    except Exception as mcp_error:
-                        logger.error(f"混合搜索MCP工具执行失败: {mcp_error}")
-                        mcp_tool_results = [{
-                            'tool_name': 'error',
-                            'arguments': {},
-                            'result': None,
-                            'error': f"MCP工具执行失败: {str(mcp_error)}",
-                            'timestamp': time.time()
-                        }]
-                    finally:
-                        loop.close()
+                logger.error(f"意图分析失败: {e}")
+                # 降级到向量搜索
+                intent_analysis = {
+                    "intent_type": "vector_search",
+                    "confidence": 0.5,
+                    "action_type": "search_documents",
+                    "reasoning": f"意图分析失败，降级到向量搜索: {str(e)}",
+                    "used_llm": False,
+                    "error": str(e),
+                    "model_used": f"{Config.INTENT_ANALYSIS_LLM_PROVIDER}:{Config.INTENT_ANALYSIS_LLM_MODEL}",
+                    "prompt_source": "config_file"
+                }
         
         # 只有在没有MCP操作时才执行搜索
         if not skip_search:
@@ -890,9 +1026,134 @@ def hybrid_search():
         
         logger.info(f"混合搜索完成 - semantic: {len(semantic_results)}, keyword: {len(keyword_results)}, files: {len(file_results)}")
         
+        # 转换为标准化消息格式
+        message_content = []
+        
+        # 1. 添加意图分析结果（如果有）
+        if intent_analysis and intent_analysis.get('confidence', 0) > Config.INTENT_ANALYSIS_CONFIDENCE_THRESHOLD:
+            message_content.append({
+                "type": "text",
+                "data": f"🎯 意图识别: {intent_analysis.get('reasoning', '已识别用户意图')}"
+            })
+        
+        # 2. 添加LLM答案（如果有）
+        if 'llm_answer' in locals() and llm_answer:
+            message_content.append({
+                "type": "markdown",
+                "data": llm_answer
+            })
+        
+        # 3. 添加MCP工具执行结果（如果有）
+        if mcp_tool_results:
+            for mcp_result in mcp_tool_results:
+                # 处理dataclass对象或字典
+                error = getattr(mcp_result, 'error', None) if hasattr(mcp_result, 'error') else mcp_result.get('error') if isinstance(mcp_result, dict) else None
+                if error:
+                    message_content.append({
+                        "type": "text",
+                        "data": f"❌ 工具执行失败: {error}"
+                    })
+                else:
+                    tool_name = getattr(mcp_result, 'tool_name', None) if hasattr(mcp_result, 'tool_name') else mcp_result.get('tool_name', 'unknown') if isinstance(mcp_result, dict) else 'unknown'
+                    arguments = getattr(mcp_result, 'arguments', {}) if hasattr(mcp_result, 'arguments') else mcp_result.get('arguments', {}) if isinstance(mcp_result, dict) else {}
+                    result = getattr(mcp_result, 'result', None) if hasattr(mcp_result, 'result') else mcp_result.get('result') if isinstance(mcp_result, dict) else None
+                    
+                    message_content.append({
+                        "type": "tool_call",
+                        "data": {
+                            "tool": tool_name,
+                            "params": arguments,
+                            "result": result,
+                            "user_visible": True
+                        }
+                    })
+        
+        # 4. 添加搜索结果表格（如果有文件结果）
+        if file_results:
+            # 构建搜索结果表格
+            table_headers = ["文档", "相关度", "搜索类型", "内容预览", "操作"]
+            table_rows = []
+            
+            for file_result in file_results[:5]:  # 限制显示前5个结果
+                document = file_result.get('document', {})
+                
+                # 计算平均相关度
+                score = file_result.get('score', 0)
+                score_display = f"{score:.2f}" if score > 0 else "N/A"
+                
+                # 搜索类型
+                search_types = file_result.get('search_types', ['unknown'])
+                search_type_display = "+".join(search_types)
+                
+                # 内容预览（使用最佳chunk）
+                chunks = file_result.get('chunks', [])
+                content_preview = chunks[0].get('text', '')[:100] + "..." if chunks else "无预览"
+                
+                table_rows.append([
+                    document.get('name', '未知文档'),
+                    score_display,
+                    search_type_display,
+                    content_preview,
+                    "📄 预览"
+                ])
+            
+            if table_rows:
+                message_content.append({
+                    "type": "table",
+                    "data": {
+                        "headers": table_headers,
+                        "rows": table_rows
+                    }
+                })
+        
+        # 5. 添加文件链接（如果有搜索结果）
+        if file_results:
+            for file_result in file_results[:3]:  # 前3个文件添加链接
+                document = file_result.get('document', {})
+                if document.get('id'):
+                    message_content.append({
+                        "type": "file_link",
+                        "data": {
+                            "url": f"/api/documents/{document.get('id')}/preview",
+                            "filename": document.get('name', '未知文档'),
+                            "description": f"查看文档: {document.get('name', '未知文档')}"
+                        }
+                    })
+        
+        # 6. 如果没有找到结果，添加建议
+        if not file_results and not mcp_tool_results:
+            message_content.append({
+                "type": "text",
+                "data": "😔 未找到相关内容，建议："
+            })
+            message_content.append({
+                "type": "markdown",
+                "data": f"""
+## 💡 搜索建议
+
+- **调整关键词**: 尝试使用更具体的词汇
+- **降低相似度**: 当前设置为 `{similarity_level}`，可尝试 `low` 或 `any`
+- **检查拼写**: 确认搜索词拼写正确
+- **使用同义词**: 尝试相关的同义词或近义词
+
+**原始查询**: `{original_query}`  
+**优化查询**: `{optimized_query}`
+"""
+            })
+        
+        # 构建标准化响应格式
+        standardized_response = {
+            "message_id": f"msg-{int(time.time())}-{hash(query_text) % 1000:03d}",
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "role": "assistant",
+            "content": message_content,
+            # 保持原有数据结构以确保向后兼容
+            "legacy_data": response_data
+        }
+        
         return jsonify({
             'success': True,
-            'data': response_data
+            'data': standardized_response
         })
         
     except Exception as e:

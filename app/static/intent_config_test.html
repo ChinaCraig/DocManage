@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>意图识别配置管理</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header {
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 8px 8px 0 0;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+        .nav-tabs {
+            display: flex;
+            border-bottom: 1px solid #ddd;
+            background: #f8f9fa;
+        }
+        .nav-tab {
+            padding: 12px 20px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+        }
+        .nav-tab.active {
+            border-bottom-color: #667eea;
+            background: white;
+            color: #667eea;
+        }
+        .tab-content {
+            padding: 20px;
+            min-height: 600px;
+        }
+        .tab-panel {
+            display: none;
+        }
+        .tab-panel.active {
+            display: block;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #333;
+        }
+        .form-control {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #5a6fd8;
+        }
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+        .btn-info {
+            background: #17a2b8;
+            color: white;
+        }
+        .btn-warning {
+            background: #ffc107;
+            color: #212529;
+        }
+        .result-box {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin-top: 20px;
+            white-space: pre-wrap;
+            font-family: 'Courier New', monospace;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .config-item {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+        .config-item h4 {
+            margin: 0 0 10px 0;
+            color: #495057;
+        }
+        .badge {
+            display: inline-block;
+            padding: 0.25em 0.4em;
+            font-size: 75%;
+            font-weight: 700;
+            line-height: 1;
+            text-align: center;
+            white-space: nowrap;
+            vertical-align: baseline;
+            border-radius: 0.25rem;
+        }
+        .badge-primary {
+            color: #fff;
+            background-color: #007bff;
+        }
+        .badge-success {
+            color: #fff;
+            background-color: #28a745;
+        }
+        .badge-info {
+            color: #fff;
+            background-color: #17a2b8;
+        }
+        .two-column {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 10px 0;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎯 意图识别配置管理</h1>
+            <p>管理和测试意图识别功能的提示词配置</p>
+        </div>
+
+        <div class="nav-tabs">
+            <button class="nav-tab active" onclick="showTab('config')">配置概览</button>
+            <button class="nav-tab" onclick="showTab('test')">单次测试</button>
+            <button class="nav-tab" onclick="showTab('batch')">批量测试</button>
+            <button class="nav-tab" onclick="showTab('prompts')">提示词管理</button>
+            <button class="nav-tab" onclick="showTab('scenarios')">场景管理</button>
+        </div>
+
+        <div class="tab-content">
+            <!-- 配置概览 -->
+            <div id="config" class="tab-panel active">
+                <h3>配置概览</h3>
+                <div class="two-column">
+                    <div>
+                        <button class="btn btn-info" onclick="loadConfig()">刷新配置</button>
+                        <button class="btn btn-warning" onclick="reloadConfig()">重载配置文件</button>
+                    </div>
+                    <div>
+                        <button class="btn btn-success" onclick="exportConfig()">导出配置</button>
+                    </div>
+                </div>
+                <div id="configInfo" class="loading">加载中...</div>
+            </div>
+
+            <!-- 单次测试 -->
+            <div id="test" class="tab-panel">
+                <h3>意图识别测试</h3>
+                <div class="form-group">
+                    <label for="testQuery">测试查询:</label>
+                    <input type="text" id="testQuery" class="form-control" placeholder="输入要测试的查询内容">
+                </div>
+                <div class="two-column">
+                    <div class="form-group">
+                        <label for="testScenario">场景 (可选):</label>
+                        <select id="testScenario" class="form-control">
+                            <option value="">通用场景</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="testModel">LLM模型 (可选):</label>
+                        <input type="text" id="testModel" class="form-control" placeholder="如: deepseek:deepseek-chat">
+                    </div>
+                </div>
+                <button class="btn btn-primary" onclick="testIntent()">执行测试</button>
+                <div id="testResult" class="result-box" style="display: none;"></div>
+            </div>
+
+            <!-- 批量测试 -->
+            <div id="batch" class="tab-panel">
+                <h3>批量意图识别测试</h3>
+                <div class="form-group">
+                    <label for="batchQueries">测试查询列表 (每行一个):</label>
+                    <textarea id="batchQueries" class="form-control" rows="10" placeholder="创建新文件夹
+搜索财务报表
+分析项目文件夹
+请问天气怎么样
+建立一个测试.txt文件"></textarea>
+                </div>
+                <div class="two-column">
+                    <div class="form-group">
+                        <label for="batchScenario">场景 (可选):</label>
+                        <select id="batchScenario" class="form-control">
+                            <option value="">通用场景</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="batchModel">LLM模型 (可选):</label>
+                        <input type="text" id="batchModel" class="form-control" placeholder="如: deepseek:deepseek-chat">
+                    </div>
+                </div>
+                <button class="btn btn-primary" onclick="batchTestIntent()">批量测试</button>
+                <div id="batchResult" class="result-box" style="display: none;"></div>
+            </div>
+
+            <!-- 提示词管理 -->
+            <div id="prompts" class="tab-panel">
+                <h3>提示词管理</h3>
+                <div class="form-group">
+                    <label for="promptScenario">选择场景:</label>
+                    <select id="promptScenario" class="form-control" onchange="loadPrompts()">
+                        <option value="">通用场景</option>
+                    </select>
+                </div>
+                <button class="btn btn-info" onclick="loadPrompts()">加载提示词</button>
+                <div id="promptsContent" class="result-box" style="display: none;"></div>
+            </div>
+
+            <!-- 场景管理 -->
+            <div id="scenarios" class="tab-panel">
+                <h3>场景配置</h3>
+                <button class="btn btn-info" onclick="loadScenarios()">加载场景配置</button>
+                <div id="scenariosContent" class="result-box" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 当前活跃的标签页
+        let currentTab = 'config';
+
+        // 显示指定标签页
+        function showTab(tabName) {
+            // 隐藏所有标签页
+            document.querySelectorAll('.tab-panel').forEach(panel => {
+                panel.classList.remove('active');
+            });
+            document.querySelectorAll('.nav-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+
+            // 显示指定标签页
+            document.getElementById(tabName).classList.add('active');
+            event.target.classList.add('active');
+            currentTab = tabName;
+
+            // 自动加载内容
+            if (tabName === 'config') {
+                loadConfig();
+            } else if (tabName === 'scenarios') {
+                loadScenarios();
+            }
+        }
+
+        // 加载配置信息
+        async function loadConfig() {
+            const configDiv = document.getElementById('configInfo');
+            configDiv.innerHTML = '<div class="loading">加载中...</div>';
+
+            try {
+                const response = await fetch('/api/intent/config');
+                const data = await response.json();
+
+                if (data.success) {
+                    const config = data.data;
+                    configDiv.innerHTML = `
+                        <div class="config-item">
+                            <h4>基础配置</h4>
+                            <p><strong>系统提示词长度:</strong> ${config.system_prompt_length} 字符</p>
+                            <p><strong>可用场景:</strong> ${config.available_scenarios.length} 个</p>
+                            <p><strong>扩展意图:</strong> ${config.extended_intents.length} 个</p>
+                        </div>
+                        <div class="config-item">
+                            <h4>模型参数</h4>
+                            <p><strong>最大令牌数:</strong> ${config.model_parameters.max_tokens}</p>
+                            <p><strong>温度:</strong> ${config.model_parameters.temperature}</p>
+                            <p><strong>置信度阈值:</strong> ${config.model_parameters.confidence_threshold}</p>
+                        </div>
+                        <div class="config-item">
+                            <h4>置信度规则</h4>
+                            <p><strong>高置信度规则:</strong> ${config.confidence_rules_count.high_confidence} 条</p>
+                            <p><strong>中等置信度规则:</strong> ${config.confidence_rules_count.medium_confidence} 条</p>
+                            <p><strong>低置信度规则:</strong> ${config.confidence_rules_count.low_confidence} 条</p>
+                        </div>
+                        <div class="config-item">
+                            <h4>可用场景</h4>
+                            ${config.available_scenarios.map(s => `<span class="badge badge-info">${s}</span>`).join(' ')}
+                        </div>
+                        <div class="config-item">
+                            <h4>扩展意图</h4>
+                            ${config.extended_intents.map(i => `<span class="badge badge-success">${i}</span>`).join(' ')}
+                        </div>
+                    `;
+
+                    // 更新场景选择器
+                    updateScenarioSelectors(config.available_scenarios);
+                } else {
+                    configDiv.innerHTML = `<div class="error">加载失败: ${data.error}</div>`;
+                }
+            } catch (error) {
+                configDiv.innerHTML = `<div class="error">网络错误: ${error.message}</div>`;
+            }
+        }
+
+        // 更新场景选择器
+        function updateScenarioSelectors(scenarios) {
+            const selectors = ['testScenario', 'batchScenario', 'promptScenario'];
+            selectors.forEach(id => {
+                const select = document.getElementById(id);
+                const currentValue = select.value;
+                select.innerHTML = '<option value="">通用场景</option>';
+                scenarios.forEach(scenario => {
+                    const option = document.createElement('option');
+                    option.value = scenario;
+                    option.textContent = scenario;
+                    select.appendChild(option);
+                });
+                select.value = currentValue;
+            });
+        }
+
+        // 重载配置文件
+        async function reloadConfig() {
+            try {
+                const response = await fetch('/api/intent/reload', {
+                    method: 'POST'
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    document.getElementById('configInfo').innerHTML = 
+                        `<div class="success">${data.message}</div>`;
+                    setTimeout(() => loadConfig(), 1000);
+                } else {
+                    document.getElementById('configInfo').innerHTML = 
+                        `<div class="error">重载失败: ${data.error}</div>`;
+                }
+            } catch (error) {
+                document.getElementById('configInfo').innerHTML = 
+                    `<div class="error">网络错误: ${error.message}</div>`;
+            }
+        }
+
+        // 单次测试
+        async function testIntent() {
+            const query = document.getElementById('testQuery').value.trim();
+            if (!query) {
+                alert('请输入测试查询');
+                return;
+            }
+
+            const scenario = document.getElementById('testScenario').value;
+            const model = document.getElementById('testModel').value;
+            const resultDiv = document.getElementById('testResult');
+
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = '测试中...';
+
+            try {
+                const response = await fetch('/api/intent/test', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        query: query,
+                        scenario: scenario || null,
+                        llm_model: model || null
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    resultDiv.innerHTML = JSON.stringify(data.data, null, 2);
+                } else {
+                    resultDiv.innerHTML = `错误: ${data.error}`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `网络错误: ${error.message}`;
+            }
+        }
+
+        // 批量测试
+        async function batchTestIntent() {
+            const queriesText = document.getElementById('batchQueries').value.trim();
+            if (!queriesText) {
+                alert('请输入测试查询列表');
+                return;
+            }
+
+            const queries = queriesText.split('\n').filter(q => q.trim());
+            const scenario = document.getElementById('batchScenario').value;
+            const model = document.getElementById('batchModel').value;
+            const resultDiv = document.getElementById('batchResult');
+
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = '批量测试中...';
+
+            try {
+                const response = await fetch('/api/intent/batch-test', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        queries: queries,
+                        scenario: scenario || null,
+                        llm_model: model || null
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    resultDiv.innerHTML = JSON.stringify(data.data, null, 2);
+                } else {
+                    resultDiv.innerHTML = `错误: ${data.error}`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `网络错误: ${error.message}`;
+            }
+        }
+
+        // 加载提示词
+        async function loadPrompts() {
+            const scenario = document.getElementById('promptScenario').value;
+            const resultDiv = document.getElementById('promptsContent');
+
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = '加载中...';
+
+            try {
+                const url = scenario ? `/api/intent/prompt?scenario=${scenario}` : '/api/intent/prompt';
+                const response = await fetch(url);
+                const data = await response.json();
+
+                if (data.success) {
+                    resultDiv.innerHTML = JSON.stringify(data.data, null, 2);
+                } else {
+                    resultDiv.innerHTML = `错误: ${data.error}`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `网络错误: ${error.message}`;
+            }
+        }
+
+        // 加载场景配置
+        async function loadScenarios() {
+            const resultDiv = document.getElementById('scenariosContent');
+
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = '加载中...';
+
+            try {
+                const response = await fetch('/api/intent/scenarios');
+                const data = await response.json();
+
+                if (data.success) {
+                    resultDiv.innerHTML = JSON.stringify(data.data, null, 2);
+                } else {
+                    resultDiv.innerHTML = `错误: ${data.error}`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `网络错误: ${error.message}`;
+            }
+        }
+
+        // 导出配置
+        function exportConfig() {
+            // 这里可以实现配置导出功能
+            alert('配置导出功能开发中...');
+        }
+
+        // 页面加载时自动加载配置
+        window.onload = function() {
+            loadConfig();
+        };
+    </script>
+</body>
+</html> 

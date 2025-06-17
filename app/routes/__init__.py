@@ -8,5 +8,6 @@ from .search_routes import search_bp
 from .upload_routes import upload_bp
 from .vectorize_routes import vectorize_bp
 from .mcp_routes import mcp_bp
+from .intent_routes import intent_bp
 
-__all__ = ['document_bp', 'search_bp', 'upload_bp', 'vectorize_bp', 'mcp_bp'] 
+__all__ = ['document_bp', 'search_bp', 'upload_bp', 'vectorize_bp', 'mcp_bp', 'intent_bp'] 
