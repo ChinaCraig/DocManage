@@ -2647,9 +2647,20 @@ async function sendChatMessage() {
         return;
     }
     
+    // 先添加用户消息到聊天记录（防止消息消失）
+    addChatMessage('user', message);
+    
+    // 清空输入框
+    chatInput.value = '';
+    
     // 如果是第一次发送消息，切换布局
     if (!isChatStarted) {
         switchToChatMode();
+        // 切换后重新获取底部输入框
+        const bottomChatInput = document.getElementById('chatInputBottom');
+        if (bottomChatInput) {
+            bottomChatInput.value = '';
+        }
     }
     
     // 获取用户选择的相似度等级
@@ -2660,10 +2671,6 @@ async function sendChatMessage() {
     
     // 获取MCP配置
     const enableMCP = enableMCPCheckbox ? enableMCPCheckbox.checked : false;
-    
-    // 添加用户消息到聊天记录
-    addChatMessage('user', message);
-    chatInput.value = '';
     
     // 显示AI正在思考的状态
     const thinkingId = addChatMessage('assistant', '', true);
@@ -2950,34 +2957,44 @@ function handleMCPResponse(data, intentAnalysis) {
     }
 }
 
-// 处理传统搜索结果（向后兼容）
+// 处理传统搜索结果（向后兼容）- 优化版本
 function handleLegacySearchResponse(data, intentAnalysis) {
+    // 收集所有需要显示的消息内容，然后一次性处理
+    const messagesToAdd = [];
+    
     // 显示意图分析信息（如果有）
     if (intentAnalysis && intentAnalysis.intent_type === 'knowledge_search') {
-        const message = `<div class="intent-analysis-info">
+        const intentMessage = `<div class="intent-analysis-info">
             <span class="intent-badge search"><i class="bi bi-database"></i> 知识库检索</span>
             <span class="confidence-score">置信度: ${(intentAnalysis.confidence * 100).toFixed(1)}%</span>
         </div>`;
-        addChatMessage('assistant', message);
+        messagesToAdd.push(intentMessage);
     }
     
     // 处理文件级别搜索结果
     if (data.file_results) {
         const fileMessage = formatFileSearchResults(data, data.query);
-        addChatMessage('assistant', fileMessage);
+        messagesToAdd.push(fileMessage);
     }
     
     // 处理块级别搜索结果
     if (data.results) {
         const chunkMessage = formatSearchResults(data.results, data.query);
-        addChatMessage('assistant', chunkMessage);
+        messagesToAdd.push(chunkMessage);
     }
     
     // 如果有LLM答案
     if (data.llm_answer) {
         const llmMessage = formatLLMAnswer(data.llm_answer, data.llm_info);
-        addChatMessage('assistant', llmMessage);
+        messagesToAdd.push(llmMessage);
     }
+    
+    // 批量添加消息，使用延迟确保DOM操作稳定
+    messagesToAdd.forEach((message, index) => {
+        setTimeout(() => {
+            addChatMessage('assistant', message);
+        }, index * 50); // 每个消息间隔50ms，避免冲突
+    });
 }
 
 // 处理无结果响应
@@ -3313,13 +3330,18 @@ function generateSearchSuggestions(query, similarityLevel, searchStrategy) {
     return suggestions.replace(/\n/g, '<br>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
 }
 
+// 添加消息计数器确保ID唯一性
+let messageCounter = 0;
+
 function addChatMessage(sender, content, isThinking = false) {
     const chatMessages = document.getElementById('chatMessages');
-    const messageId = 'msg-' + Date.now();
+    // 使用计数器 + 时间戳 + 随机数确保ID唯一性
+    const messageId = `msg-${++messageCounter}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
     // 如果content是标准化消息对象，使用新的渲染器
     if (content && typeof content === 'object' && content.content && Array.isArray(content.content)) {
         const messageElement = MessageRenderer.renderMessage(content);
+        messageElement.id = messageId; // 确保标准化消息也有唯一ID
         chatMessages.appendChild(messageElement);
         chatMessages.scrollTop = chatMessages.scrollHeight;
         return content.message_id || messageId;
@@ -3332,9 +3354,11 @@ function addChatMessage(sender, content, isThinking = false) {
     
     if (isThinking) {
         messageDiv.innerHTML = `
-            <div class="message-content">
-                <div class="loading"></div>
-                <span class="ms-2">正在搜索...</span>
+            <div class="message-content thinking-message">
+                <div class="thinking-indicator">
+                    <div class="loading"></div>
+                    <span class="thinking-text">正在搜索...</span>
+                </div>
             </div>
         `;
     } else {
@@ -3364,9 +3388,25 @@ function addChatMessage(sender, content, isThinking = false) {
 }
 
 function removeChatMessage(messageId) {
-    const message = document.getElementById(messageId);
-    if (message) {
-        message.remove();
+    try {
+        const message = document.getElementById(messageId);
+        if (message) {
+            // 添加淡出动画效果
+            message.style.transition = 'opacity 0.3s ease-out';
+            message.style.opacity = '0';
+            
+            // 延迟移除，确保动画完成
+            setTimeout(() => {
+                if (message && message.parentNode) {
+                    message.remove();
+                    console.log(`✅ 成功移除消息: ${messageId}`);
+                }
+            }, 300);
+        } else {
+            console.warn(`⚠️ 未找到要移除的消息: ${messageId}`);
+        }
+    } catch (error) {
+        console.error(`❌ 移除消息时出错: ${messageId}`, error);
     }
 }
 

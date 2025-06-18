@@ -1197,6 +1197,37 @@
             100% { transform: rotate(360deg); }
         }
 
+        /* 思考中的消息样式 */
+        .thinking-message {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border: 1px solid #dee2e6;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        .thinking-indicator {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 4px 0;
+        }
+
+        .thinking-text {
+            color: #6c757d;
+            font-style: italic;
+            font-size: 14px;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 0.8;
+                transform: scale(1);
+            }
+            50% {
+                opacity: 1;
+                transform: scale(1.02);
+            }
+        }
+
         .chat-input-area {
             padding: 10px 15px; /* 从12px减少到10px */
             border-top: 1px solid #e9ecef;
@@ -1637,9 +1668,9 @@
             padding: 6px 12px;
         }
 
-        /* 消息样式 */
+        /* 消息样式 - 现代化设计 */
         .message {
-            margin-bottom: 15px;
+            margin-bottom: 1.5rem;
             display: flex;
             align-items: flex-start;
         }
@@ -1650,25 +1681,99 @@
 
         .message-content {
             max-width: 80%;
-            padding: 12px 16px;
-            border-radius: 18px;
+            padding: 1.25rem;
+            border-radius: 12px;
             position: relative;
+            border: 1px solid #e9ecef;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+            transition: all 0.3s ease;
+            overflow: hidden;
+        }
+
+        .message-content:hover {
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+            transform: translateY(-2px);
         }
 
         .message.user .message-content {
-            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
-            color: white;
+            background: linear-gradient(135deg, #e3f2fd 0%, #f0f8ff 100%);
+            color: #1976d2;
+            border: 1px solid #bbdefb;
+            margin-left: 2rem;
+            position: relative;
+        }
+
+        .message.user .message-content::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 4px;
+            height: 100%;
+            background: linear-gradient(180deg, #2196f3, #1976d2);
+            border-radius: 0 2px 2px 0;
         }
 
         .message.assistant .message-content {
-            background: #e9ecef;
+            background: linear-gradient(135deg, #f1f8e9 0%, #f8fff8 100%);
             color: #2c3e50;
+            border: 1px solid #c8e6c9;
+            margin-right: 2rem;
+            position: relative;
+        }
+
+        .message.assistant .message-content::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 4px;
+            height: 100%;
+            background: linear-gradient(180deg, #4caf50, #388e3c);
+            border-radius: 0 2px 2px 0;
         }
 
         .message-time {
-            font-size: 12px;
-            opacity: 0.7;
-            margin-top: 5px;
+            font-size: 0.8rem;
+            color: #7f8c8d;
+            background: rgba(127, 140, 141, 0.1);
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-weight: 500;
+            border: 1px solid rgba(127, 140, 141, 0.2);
+            margin-top: 8px;
+            display: inline-block;
+        }
+
+        /* 消息动画效果 */
+        .message .message-content {
+            animation: messageSlideIn 0.3s ease-out;
+        }
+
+        @keyframes messageSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .message.user .message-content {
+                margin-left: 0.5rem;
+            }
+
+            .message.assistant .message-content {
+                margin-right: 0.5rem;
+            }
+
+            .message-content {
+                max-width: 90%;
+            }
         }
 
         /* 输入区域样式 */
