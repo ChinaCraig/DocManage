@@ -1,6 +1,19 @@
-# 智能检索对话提示词配置
+# ==========================================
+# 智能检索对话提示词配置文件
+# ==========================================
+# 作用：为智能文档检索系统提供标准化的提示词模板和配置
+# 功能：1. 查询优化 - 将用户自然语言查询转换为向量检索友好的关键词
+#      2. 结果组装 - 基于检索到的文档片段生成结构化答案
+# 使用场景：语义搜索、文档问答、知识库检索等
+# ==========================================
 
+# ==========================================
+# 查询优化模块 (Query Optimization)
+# ==========================================
+# 目的：将用户的自然语言查询转换为适合向量检索的优化关键词
+# 工作原理：通过LLM分析用户意图，提取核心概念，扩展同义词，生成检索关键词
 query_optimization:
+  # 系统级提示词 - 定义AI助手的角色和核心任务
   system_prompt: |
     你是一个专业的智能文档检索助手。你的核心任务是理解用户的查询意图，提取关键信息，并优化为最适合向量检索的查询。
     
@@ -11,7 +24,9 @@ query_optimization:
     4. 考虑文档类型和领域特性
     5. 生成精准的检索关键词
 
+  # 提示词模板集合 - 不同类型的查询优化策略
   templates:
+    # 综合分析模板 - 最详细的查询分析和优化流程
     comprehensive: |
       请深度分析用户查询，执行智能关键信息提取：
 
@@ -37,6 +52,7 @@ query_optimization:
 
       现在请分析上述查询：
 
+    # 商业文档专用模板 - 针对商业文档的关键词优化
     business_focused: |
       从商业文档检索角度分析用户查询：
 
@@ -50,6 +66,7 @@ query_optimization:
 
       直接输出优化后的商业检索关键词（空格分隔）：
 
+    # 技术文档专用模板 - 针对技术文档的关键词优化
     technical_focused: |
       从技术文档检索角度分析用户查询：
 
@@ -63,6 +80,7 @@ query_optimization:
 
       直接输出优化后的技术检索关键词（空格分隔）：
 
+    # 简化模板 - 快速关键词提取，适用于对延迟敏感的场景
     simple: |
       请将用户查询优化为适合文档检索的关键词：
 
@@ -70,11 +88,18 @@ query_optimization:
 
       提取核心概念，输出关键词（空格分隔）：
 
+  # LLM调用参数配置 - 控制查询优化的生成质量和效率
   parameters:
-    max_tokens: 200
-    temperature: 0.3
+    max_tokens: 200      # 最大生成token数，控制输出长度
+    temperature: 0.3     # 温度参数，较低值确保输出稳定性
 
+# ==========================================
+# 结果组装模块 (Result Assembly)
+# ==========================================
+# 目的：基于检索到的文档片段生成结构化、准确、有用的答案
+# 工作原理：使用不同的答案模板，确保回答质量和格式的一致性
 result_assembly:
+  # 系统级提示词 - 定义信息整合专家的角色和核心原则
   system_prompt: |
     你是一个专业的信息整合专家。基于用户查询和检索到的文档片段，生成结构化、准确、有用的答案。
     
@@ -85,7 +110,9 @@ result_assembly:
     4. 提供信息来源和置信度
     5. 针对用户意图提供实用建议
 
+  # 答案生成模板集合 - 不同风格的答案组装策略
   templates:
+    # 结构化答案模板 - 标准的分段式回答格式
     structured_answer: |
       基于检索到的文档内容，为用户提供结构化回答：
 
@@ -117,6 +144,7 @@ result_assembly:
       - 区分事实陈述和推理分析
       - 保持客观和准确性
 
+    # 简洁答案模板 - 快速、精准的回答格式
     concise_answer: |
       基于文档内容提供简洁准确的回答：
 
@@ -130,6 +158,7 @@ result_assembly:
 
       如果信息不足，请明确说明限制。
 
+    # 分析式答案模板 - 深度分析和多维度解答
     analytical_answer: |
       基于文档内容进行深度分析回答：
 
@@ -145,6 +174,7 @@ result_assembly:
 
       请按此框架进行分析回答。
 
+    # 默认模板 - 通用的回答格式，作为降级选项
     default: |
       基于文档内容回答用户问题：
 
@@ -153,13 +183,20 @@ result_assembly:
 
       请提供准确、有用的答案：
 
+  # LLM调用参数配置 - 控制答案生成的创造性和详细程度
   parameters:
-    max_tokens: 800
-    temperature: 0.7
+    max_tokens: 800      # 最大生成token数，支持较长的详细回答
+    temperature: 0.7     # 温度参数，平衡创造性和准确性
 
-# 特定场景的提示词
+# ==========================================
+# 特定场景提示词配置
+# ==========================================
+# 目的：为不同业务领域提供专门优化的提示词模板
+# 优势：提高特定领域的检索和答案质量
 scenario_prompts:
+  # 法律文档场景配置
   legal_document:
+    # 法律文档专用的查询优化提示词
     query_optimization: |
       法律文档专业检索分析：
       查询: {query}
@@ -172,6 +209,7 @@ scenario_prompts:
       
       输出法律检索关键词（空格分隔）：
 
+    # 法律文档专用的结果组装提示词
     result_assembly: |
       基于法律文档内容回答：
       问题: {query}
@@ -183,7 +221,9 @@ scenario_prompts:
       3. 操作指引
       4. 风险提示
       
+  # 财务文档场景配置
   financial_document:
+    # 财务文档专用的查询优化提示词
     query_optimization: |
       财务文档专业检索分析：
       查询: {query}
@@ -196,6 +236,7 @@ scenario_prompts:
       
       输出财务检索关键词（空格分隔）：
 
+    # 财务文档专用的结果组装提示词
     result_assembly: |
       基于财务文档内容回答：
       问题: {query}
@@ -207,7 +248,9 @@ scenario_prompts:
       3. 合规要求
       4. 风险控制措施
 
+  # 人力资源文档场景配置
   hr_document:
+    # HR文档专用的查询优化提示词
     query_optimization: |
       人力资源文档专业检索分析：
       查询: {query}
@@ -220,6 +263,7 @@ scenario_prompts:
       
       输出HR检索关键词（空格分隔）：
 
+    # HR文档专用的结果组装提示词
     result_assembly: |
       基于HR文档内容回答：
       问题: {query}
@@ -231,26 +275,37 @@ scenario_prompts:
       3. 注意事项
       4. 相关表单和工具
 
+# ==========================================
 # 提示词效果优化配置
+# ==========================================
+# 目的：控制提示词功能的启用/禁用，优化系统性能和效果
 optimization_config:
+  # 查询分析优化开关
   query_analysis:
-    enable_intent_detection: true
-    enable_entity_extraction: true
-    enable_synonym_expansion: true
-    enable_context_understanding: true
+    enable_intent_detection: true        # 启用意图检测
+    enable_entity_extraction: true       # 启用实体抽取
+    enable_synonym_expansion: true       # 启用同义词扩展
+    enable_context_understanding: true   # 启用上下文理解
     
+  # 答案生成优化开关
   answer_generation:
-    require_source_citation: true
-    enable_confidence_scoring: true
-    enable_structured_output: true
-    enable_actionable_insights: true
+    require_source_citation: true        # 要求引用信息来源
+    enable_confidence_scoring: true      # 启用置信度评分
+    enable_structured_output: true       # 启用结构化输出
+    enable_actionable_insights: true     # 启用可操作的建议
 
+# ==========================================
 # A/B测试配置
+# ==========================================
+# 目的：支持不同提示词版本的效果对比测试
+# 用法：可以通过配置不同的变体来测试提示词效果
 ab_testing:
+  # 查询优化的A/B测试配置
   query_optimization:
-    variant_a: "comprehensive"
-    variant_b: "business_focused"
+    variant_a: "comprehensive"      # 变体A：使用综合分析模板
+    variant_b: "business_focused"   # 变体B：使用商业文档专用模板
     
+  # 结果组装的A/B测试配置
   result_assembly:
-    variant_a: "structured_answer"
-    variant_b: "analytical_answer" 
+    variant_a: "structured_answer"  # 变体A：使用结构化答案模板
+    variant_b: "analytical_answer"  # 变体B：使用分析式答案模板 
