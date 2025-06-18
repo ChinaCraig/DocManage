@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>消息滚动测试</title>
+    <link href="/static/css/message_components.css" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f8f9fa;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .test-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .test-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .chat-area {
+            height: 500px; /* 固定高度模拟聊天区域 */
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .messages-container {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            /* 美化滚动条 */
+            scrollbar-width: thin;
+            scrollbar-color: #cbd5e0 #f7fafc;
+        }
+
+        .messages-container::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .messages-container::-webkit-scrollbar-track {
+            background: #f1f5f9;
+            border-radius: 4px;
+        }
+
+        .messages-container::-webkit-scrollbar-thumb {
+            background: #cbd5e0;
+            border-radius: 4px;
+            transition: background-color 0.2s ease;
+        }
+
+        .messages-container::-webkit-scrollbar-thumb:hover {
+            background: #a0aec0;
+        }
+
+        .add-message-btn {
+            margin: 20px;
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .add-message-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3);
+        }
+
+        .info-panel {
+            background: #e3f2fd;
+            border: 1px solid #bbdefb;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 20px;
+            font-size: 14px;
+            color: #1976d2;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <div class="test-header">
+            <h1>📜 消息滚动测试</h1>
+            <p>测试多条消息时的滚动效果和样式保持</p>
+        </div>
+
+        <div class="info-panel">
+            <strong>测试说明：</strong>
+            <ul>
+                <li>点击"添加消息"按钮增加更多消息</li>
+                <li>观察当消息超过容器高度时是否出现滚动条</li>
+                <li>确认历史消息的样式不会被压缩或改变</li>
+                <li>验证新消息会自动滚动到底部</li>
+            </ul>
+        </div>
+
+        <div class="chat-area">
+            <div class="messages-container" id="messagesContainer">
+                <!-- 初始消息 -->
+                <div class="message-container" data-role="user">
+                    <div class="message-header">
+                        <div class="message-role">用户</div>
+                        <div class="message-time">10:00:01</div>
+                    </div>
+                    <div class="message-content">
+                        <div class="content-text regular-text">
+                            你好，请帮我搜索一些技术文档。
+                        </div>
+                    </div>
+                </div>
+
+                <div class="message-container" data-role="assistant">
+                    <div class="message-header">
+                        <div class="message-role">AI助手</div>
+                        <div class="message-time">10:00:05</div>
+                    </div>
+                    <div class="message-content">
+                        <div class="intent-info">
+                            <span class="intent-badge knowledge_search">知识检索</span>
+                            <span class="confidence-score">置信度: 95%</span>
+                        </div>
+                        <div class="content-text intent-analysis">
+                            🎯 意图识别: 用户要求进行技术文档搜索，已识别为知识库检索操作
+                        </div>
+                        <div class="content-markdown">
+                            <h3>搜索结果</h3>
+                            <p>我为您找到了以下技术文档：</p>
+                            <ul>
+                                <li><strong>系统架构设计</strong> - 详细介绍了整体架构</li>
+                                <li><strong>API接口文档</strong> - 包含所有接口的使用说明</li>
+                                <li><strong>部署指南</strong> - 生产环境部署步骤</li>
+                            </ul>
+                        </div>
+                        <div class="content-table-container">
+                            <table class="content-table">
+                                <thead>
+                                    <tr>
+                                        <th>文档名称</th>
+                                        <th>相关度</th>
+                                        <th>类型</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>系统架构设计.pdf</td>
+                                        <td>0.98</td>
+                                        <td>PDF</td>
+                                    </tr>
+                                    <tr>
+                                        <td>API文档.md</td>
+                                        <td>0.95</td>
+                                        <td>Markdown</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <button class="add-message-btn" onclick="addTestMessage()">
+                📝 添加消息
+            </button>
+        </div>
+    </div>
+
+    <script>
+        let messageCount = 2;
+        
+        function addTestMessage() {
+            const container = document.getElementById('messagesContainer');
+            messageCount++;
+            
+            const isUser = messageCount % 2 === 1;
+            const role = isUser ? 'user' : 'assistant';
+            const time = new Date().toLocaleTimeString();
+            
+            let messageHTML;
+            
+            if (isUser) {
+                messageHTML = `
+                    <div class="message-container" data-role="user">
+                        <div class="message-header">
+                            <div class="message-role">用户</div>
+                            <div class="message-time">${time}</div>
+                        </div>
+                        <div class="message-content">
+                            <div class="content-text regular-text">
+                                这是第 ${messageCount} 条消息。请继续为我提供更多信息。
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } else {
+                const intentTypes = ['knowledge_search', 'normal_chat', 'mcp_action'];
+                const intentLabels = ['知识检索', '普通对话', 'MCP操作'];
+                const intentIndex = Math.floor(Math.random() * 3);
+                
+                messageHTML = `
+                    <div class="message-container" data-role="assistant">
+                        <div class="message-header">
+                            <div class="message-role">AI助手</div>
+                            <div class="message-time">${time}</div>
+                        </div>
+                        <div class="message-content">
+                            <div class="intent-info">
+                                <span class="intent-badge ${intentTypes[intentIndex]}">${intentLabels[intentIndex]}</span>
+                                <span class="confidence-score">置信度: ${Math.floor(Math.random() * 20 + 80)}%</span>
+                            </div>
+                            <div class="content-text intent-analysis">
+                                🎯 意图识别: 这是第 ${messageCount} 条AI回复的意图分析信息
+                            </div>
+                            <div class="content-markdown">
+                                <h3>AI回复 #${messageCount}</h3>
+                                <p>这是第 ${messageCount} 条AI助手的回复。无论添加多少条消息，每条消息的样式都应该保持一致，不会被压缩或改变。</p>
+                                <p><strong>重要特性：</strong></p>
+                                <ul>
+                                    <li>消息容器保持固定的内边距和圆角</li>
+                                    <li>内容区域不会被压缩</li>
+                                    <li>意图识别信息始终在右上角</li>
+                                    <li>滚动条出现时历史消息样式不变</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            container.insertAdjacentHTML('beforeend', messageHTML);
+            
+            // 自动滚动到底部
+            container.scrollTop = container.scrollHeight;
+        }
+        
+        // 页面加载完成后滚动到底部
+        window.addEventListener('load', function() {
+            const container = document.getElementById('messagesContainer');
+            container.scrollTop = container.scrollHeight;
+        });
+    </script>
+</body>
+</html> 

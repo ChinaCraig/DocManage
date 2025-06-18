@@ -36,6 +36,14 @@ class MessageRenderer {
             });
         }
         
+        // 添加意图识别信息（如果有legacy_data中的意图分析）
+        if (message.legacy_data && message.legacy_data.intent_analysis) {
+            const intentInfo = this.createIntentInfo(message.legacy_data.intent_analysis);
+            if (intentInfo) {
+                contentContainer.appendChild(intentInfo);
+            }
+        }
+        
         messageContainer.appendChild(contentContainer);
         return messageContainer;
     }
@@ -51,11 +59,47 @@ class MessageRenderer {
         
         const timestamp = new Date(message.timestamp).toLocaleString('zh-CN');
         header.innerHTML = `
-            <span class="message-role">🤖 AI助手</span>
+            <span class="message-role">AI助手</span>
             <span class="message-time">${timestamp}</span>
         `;
         
         return header;
+    }
+    
+    /**
+     * 创建意图识别信息显示
+     * @param {Object} intentData - 意图分析数据
+     * @returns {HTMLElement} 意图信息元素
+     */
+    static createIntentInfo(intentData) {
+        if (!intentData || !intentData.intent_type) {
+            return null;
+        }
+        
+        const intentInfo = document.createElement('div');
+        intentInfo.className = 'intent-info';
+        
+        // 意图类型徽章
+        const intentBadge = document.createElement('span');
+        intentBadge.className = `intent-badge ${intentData.intent_type}`;
+        
+        const intentNames = {
+            'normal_chat': '普通对话',
+            'knowledge_search': '知识检索', 
+            'mcp_action': 'MCP操作'
+        };
+        
+        intentBadge.textContent = intentNames[intentData.intent_type] || intentData.intent_type;
+        
+        // 置信度分数
+        const confidenceScore = document.createElement('span');
+        confidenceScore.className = 'confidence-score';
+        confidenceScore.textContent = `置信度: ${(intentData.confidence * 100).toFixed(0)}%`;
+        
+        intentInfo.appendChild(intentBadge);
+        intentInfo.appendChild(confidenceScore);
+        
+        return intentInfo;
     }
     
     /**
@@ -98,7 +142,14 @@ class MessageRenderer {
      */
     static renderText(text) {
         const element = document.createElement('div');
-        element.className = 'content-text';
+        
+        // 判断是否为意图分析内容
+        if (text.includes('意图识别') || text.includes('识别为') || text.includes('普通对话') || text.includes('MCP操作')) {
+            element.className = 'content-text intent-analysis';
+        } else {
+            element.className = 'content-text regular-text';
+        }
+        
         element.textContent = text;
         return element;
     }
