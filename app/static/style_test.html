@@ -61,7 +61,7 @@
         <div class="type-section">
             <h2 class="type-title">📝 1. 文本内容 (Text)</h2>
             <div class="content-text intent-analysis">
-                🎯 意图识别: 系统已成功识别您的意图为知识库检索操作
+                🎯 意图识别分析：系统已成功识别您的意图为知识库检索操作。通过自然语言处理和语义理解，分析出用户具有明确的信息查找需求。建议启用智能搜索功能并提供相关度排序。置信度：88%。这是一段测试间距效果的较长文本内容。
             </div>
             <div class="content-text regular-text">
                 这是一个普通文本内容示例。系统正在为您处理相关请求，请稍候片刻。
@@ -94,7 +94,6 @@
                             <th>相关度</th>
                             <th>文件类型</th>
                             <th>最后修改</th>
-                            <th>操作</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -103,21 +102,18 @@
                             <td>0.95</td>
                             <td>PDF</td>
                             <td>2025-06-18</td>
-                            <td>📄 预览</td>
                         </tr>
                         <tr>
                             <td>技术方案设计.docx</td>
                             <td>0.87</td>
                             <td>Word</td>
                             <td>2025-06-17</td>
-                            <td>📄 预览</td>
                         </tr>
                         <tr>
                             <td>数据分析报告.xlsx</td>
                             <td>0.76</td>
                             <td>Excel</td>
                             <td>2025-06-16</td>
-                            <td>📄 预览</td>
                         </tr>
                     </tbody>
                 </table>
@@ -214,42 +210,22 @@
             </div>
         </div>
         
-        <div class="type-section">
-            <h2 class="type-title">🎯 意图识别信息</h2>
-            <div style="position: relative; height: 60px; background: rgba(52, 152, 219, 0.05); border-radius: 8px; margin-bottom: 1rem;">
-                <div class="intent-info">
-                    <span class="intent-badge knowledge_search">知识检索</span>
-                    <span class="confidence-score">置信度: 95%</span>
-                </div>
-            </div>
-            <div style="position: relative; height: 60px; background: rgba(108, 117, 125, 0.05); border-radius: 8px; margin-bottom: 1rem;">
-                <div class="intent-info">
-                    <span class="intent-badge normal_chat">普通对话</span>
-                    <span class="confidence-score">置信度: 88%</span>
-                </div>
-            </div>
-            <div style="position: relative; height: 60px; background: rgba(255, 193, 7, 0.05); border-radius: 8px;">
-                <div class="intent-info">
-                    <span class="intent-badge mcp_action">MCP操作</span>
-                    <span class="confidence-score">置信度: 92%</span>
-                </div>
-            </div>
-        </div>
+        <!-- 移除意图识别信息展示区域 -->
         
         <div class="type-section">
             <h2 class="type-title">💬 完整消息示例</h2>
             <div class="message-container" data-role="assistant">
                 <div class="message-header">
                     <span class="message-role">AI助手</span>
-                    <span class="message-time">2025-06-18 09:30:25</span>
-                </div>
-                <div class="message-content">
                     <div class="intent-info">
                         <span class="intent-badge knowledge_search">知识检索</span>
                         <span class="confidence-score">置信度: 95%</span>
                     </div>
+                    <span class="message-time">2025-06-18 09:30:25</span>
+                </div>
+                <div class="message-content">
                     <div class="content-text intent-analysis">
-                        🎯 意图识别: 用户要求进行文档搜索，已识别为知识库检索操作
+                        🎯 意图识别分析：用户要求进行文档搜索，已识别为知识库检索操作。系统通过语义分析识别出这是一个明确的知识检索请求，涉及技术文档的搜索需求。分析结果显示用户具有明确的信息获取目标，建议提供相关文档链接和预览功能。置信度：95%。这是一段较长的意图分析文本，用于测试与下方AI回答区域之间的间距效果是否合适。
                     </div>
                     <div class="content-markdown">
                         <h2>搜索结果</h2>
@@ -307,6 +283,35 @@
                 }
             });
         });
+
+        // 测试操作列过滤功能
+        function testTableFiltering() {
+            // 带有操作列的测试数据
+            const testTableData = {
+                headers: ['文档名称', '相关度', '文件类型', '最后修改', '操作'],
+                rows: [
+                    ['测试文档1.pdf', '0.95', 'PDF', '2025-06-18', '📄 预览'],
+                    ['测试文档2.docx', '0.87', 'Word', '2025-06-17', '📄 预览'],
+                    ['测试文档3.xlsx', '0.76', 'Excel', '2025-06-16', '📄 预览']
+                ]
+            };
+            
+            // 创建测试表格
+            const testTable = MessageRenderer.renderTable(testTableData);
+            
+            // 添加到页面底部进行测试
+            const testContainer = document.createElement('div');
+            testContainer.style.marginTop = '2rem';
+            testContainer.style.padding = '1rem';
+            testContainer.style.border = '2px dashed #ccc';
+            testContainer.innerHTML = '<h3>操作列过滤测试：</h3>';
+            testContainer.appendChild(testTable);
+            
+            document.body.appendChild(testContainer);
+        }
+        
+        // 页面加载完成后运行测试
+        document.addEventListener('DOMContentLoaded', testTableFiltering);
     </script>
 </body>
 </html> 

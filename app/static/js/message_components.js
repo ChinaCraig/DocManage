@@ -36,13 +36,7 @@ class MessageRenderer {
             });
         }
         
-        // 添加意图识别信息（如果有legacy_data中的意图分析）
-        if (message.legacy_data && message.legacy_data.intent_analysis) {
-            const intentInfo = this.createIntentInfo(message.legacy_data.intent_analysis);
-            if (intentInfo) {
-                contentContainer.appendChild(intentInfo);
-            }
-        }
+        // 意图识别信息现在在消息头部显示，不在内容区域
         
         messageContainer.appendChild(contentContainer);
         return messageContainer;
@@ -58,10 +52,27 @@ class MessageRenderer {
         header.className = 'message-header';
         
         const timestamp = new Date(message.timestamp).toLocaleString('zh-CN');
-        header.innerHTML = `
-            <span class="message-role">AI助手</span>
-            <span class="message-time">${timestamp}</span>
-        `;
+        
+        // 创建基本头部内容
+        const roleSpan = document.createElement('span');
+        roleSpan.className = 'message-role';
+        roleSpan.textContent = 'AI助手';
+        
+        const timeSpan = document.createElement('span');
+        timeSpan.className = 'message-time';
+        timeSpan.textContent = timestamp;
+        
+        header.appendChild(roleSpan);
+        
+        // 添加意图识别信息（如果有）
+        if (message.legacy_data && message.legacy_data.intent_analysis) {
+            const intentInfo = this.createIntentInfo(message.legacy_data.intent_analysis);
+            if (intentInfo) {
+                header.appendChild(intentInfo);
+            }
+        }
+        
+        header.appendChild(timeSpan);
         
         return header;
     }
@@ -191,16 +202,28 @@ class MessageRenderer {
             return this.renderText('[表格数据格式错误]');
         }
         
+        // 过滤掉操作列
+        const filteredHeaders = [];
+        const operationColumnIndexes = [];
+        
+        tableData.headers.forEach((header, index) => {
+            if (header === '操作' || header === 'action' || header === 'actions' || header === '预览') {
+                operationColumnIndexes.push(index);
+            } else {
+                filteredHeaders.push(header);
+            }
+        });
+        
         const container = document.createElement('div');
         container.className = 'content-table-container';
         
         const table = document.createElement('table');
         table.className = 'content-table';
         
-        // 创建表头
+        // 创建表头（使用过滤后的headers）
         const thead = document.createElement('thead');
         const headerRow = document.createElement('tr');
-        tableData.headers.forEach(header => {
+        filteredHeaders.forEach(header => {
             const th = document.createElement('th');
             th.textContent = header;
             headerRow.appendChild(th);
@@ -208,14 +231,17 @@ class MessageRenderer {
         thead.appendChild(headerRow);
         table.appendChild(thead);
         
-        // 创建表体
+        // 创建表体（过滤掉操作列的数据）
         const tbody = document.createElement('tbody');
         tableData.rows.forEach(rowData => {
             const row = document.createElement('tr');
-            rowData.forEach(cellData => {
-                const td = document.createElement('td');
-                td.textContent = cellData;
-                row.appendChild(td);
+            rowData.forEach((cellData, index) => {
+                // 跳过操作列的数据
+                if (!operationColumnIndexes.includes(index)) {
+                    const td = document.createElement('td');
+                    td.textContent = cellData;
+                    row.appendChild(td);
+                }
             });
             tbody.appendChild(row);
         });
