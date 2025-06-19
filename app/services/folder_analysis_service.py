@@ -7,8 +7,7 @@ import logging
 import re
 from typing import Dict, List, Any, Optional
 from app.models.document_models import DocumentNode, Tag
-from app.services.llm_service import LLMService
-from app.services.llm_service import LLMClientFactory
+from app.services.llm import LLMService, LLMClientFactory
 
 logger = logging.getLogger(__name__)
 

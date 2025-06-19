@@ -6,7 +6,7 @@ from flask import Blueprint, request, jsonify
 from sqlalchemy import or_, and_, desc
 from app.models.document_models import DocumentNode, db
 from app.services.vectorization.vector_service_adapter import VectorServiceAdapter
-from app.services.llm_service import LLMService
+from app.services.llm import LLMService
 # 旧的MCP服务已移除
 from config import Config
 import asyncio
@@ -97,7 +97,7 @@ def semantic_search():
         # 使用专用的意图识别模型进行智能意图分析
         if Config.ENABLE_INTENT_ANALYSIS and enable_mcp:
             try:
-                from app.services.llm_service import LLMService
+                from app.services.llm import LLMService
                 # 使用专用的意图识别模型
                 intent_llm_model = f"{Config.INTENT_ANALYSIS_LLM_PROVIDER}:{Config.INTENT_ANALYSIS_LLM_MODEL}"
                 intent_analysis = LLMService.analyze_user_intent(query_text, intent_llm_model)
@@ -760,7 +760,7 @@ def hybrid_search():
         # 使用专用的意图识别模型进行智能意图分析
         if Config.ENABLE_INTENT_ANALYSIS and enable_intent_analysis:
             try:
-                from app.services.llm_service import LLMService
+                from app.services.llm import LLMService
                 # 使用专用的意图识别模型
                 intent_llm_model = f"{Config.INTENT_ANALYSIS_LLM_PROVIDER}:{Config.INTENT_ANALYSIS_LLM_MODEL}"
                 intent_analysis = LLMService.analyze_user_intent(query_text, intent_llm_model)

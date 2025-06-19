@@ -1,7 +1,7 @@
 import logging
 from flask import Blueprint, request, jsonify
-from app.services.intent_prompt_service import intent_prompt_service
-from app.services.llm_service import LLMService
+from app.services.intent_service import intent_service
+from app.services.llm import LLMService
 
 logger = logging.getLogger(__name__)
 
@@ -11,17 +11,25 @@ intent_bp = Blueprint('intent', __name__)
 def get_intent_config():
     """获取意图识别配置信息"""
     try:
+        config = intent_service.config or {}
+        llm_config = config.get('llm_config', {})
+        intent_prompts = config.get('intent_prompts', {})
+        fallback_config = config.get('fallback_config', {})
+        keyword_analysis = config.get('keyword_analysis', {})
+        
         config_info = {
-            'system_prompt_length': len(intent_prompt_service.get_system_prompt()),
-            'user_prompt_template': intent_prompt_service.get_user_prompt_template(),
-            'model_parameters': intent_prompt_service.get_model_parameters(),
-            'available_scenarios': list(intent_prompt_service.config.get('scenario_prompts', {}).keys()) if intent_prompt_service.config else [],
-            'extended_intents': list(intent_prompt_service.config.get('extended_intents', {}).keys()) if intent_prompt_service.config else [],
-            'confidence_rules_count': {
-                'high_confidence': len(intent_prompt_service.config.get('confidence_rules', {}).get('high_confidence', [])) if intent_prompt_service.config else 0,
-                'medium_confidence': len(intent_prompt_service.config.get('confidence_rules', {}).get('medium_confidence', [])) if intent_prompt_service.config else 0,
-                'low_confidence': len(intent_prompt_service.config.get('confidence_rules', {}).get('low_confidence', [])) if intent_prompt_service.config else 0
-            }
+            'service_mode': llm_config.get('service_mode', 'remote'),
+            'current_provider': llm_config.get('current_provider', 'deepseek'),
+            'current_model': llm_config.get('current_model', 'deepseek-chat'),
+            'system_prompt_length': len(intent_prompts.get('system_prompt', '')),
+            'user_prompt_template': intent_prompts.get('user_prompt_template', ''),
+            'confidence_threshold': intent_prompts.get('confidence_threshold', 0.6),
+            'fallback_enabled': fallback_config.get('enabled', True),
+            'fallback_strategy': fallback_config.get('strategy', 'keyword_analysis'),
+            'keyword_analysis_enabled': keyword_analysis.get('enabled', True),
+            'available_providers': list(llm_config.get('providers', {}).keys()),
+            'intent_types': ['normal_chat', 'knowledge_search', 'mcp_action'],
+            'cache_enabled': config.get('performance', {}).get('cache', {}).get('enabled', True)
         }
         
         return jsonify({
@@ -40,14 +48,14 @@ def get_intent_config():
 def get_available_scenarios():
     """获取可用的意图识别场景"""
     try:
-        scenarios = {}
-        if intent_prompt_service.config and 'scenario_prompts' in intent_prompt_service.config:
-            for scenario_name, config in intent_prompt_service.config['scenario_prompts'].items():
-                scenarios[scenario_name] = {
-                    'name': scenario_name,
-                    'description': config.get('system_prompt', '')[:100] + '...' if len(config.get('system_prompt', '')) > 100 else config.get('system_prompt', ''),
-                    'enhanced_keywords': config.get('enhanced_keywords', {})
-                }
+        # 新架构暂时不支持场景特定配置，返回默认场景
+        scenarios = {
+            'default': {
+                'name': 'default',
+                'description': '默认意图识别场景',
+                'intent_types': ['normal_chat', 'knowledge_search', 'mcp_action']
+            }
+        }
         
         return jsonify({
             'success': True,
@@ -85,22 +93,14 @@ def test_intent_analysis():
         # 执行意图分析
         intent_result = LLMService.analyze_user_intent(query, llm_model, scenario)
         
-        # 获取查询复杂度分析
-        query_features = intent_prompt_service.analyze_query_complexity(query)
-        
-        # 获取置信度提升信息
-        confidence_boost = intent_prompt_service.get_confidence_boost(
-            query, intent_result.get('intent_type', '')
-        )
-        
         response_data = {
             'query': query,
             'scenario': scenario,
             'intent_result': intent_result,
-            'query_features': query_features,
-            'confidence_boost': confidence_boost,
+            'analysis_method': intent_result.get('analysis_method', 'unknown'),
             'model_used': intent_result.get('model_used'),
-            'prompt_source': intent_result.get('prompt_source')
+            'prompt_source': intent_result.get('prompt_source'),
+            'timestamp': intent_result.get('timestamp')
         }
         
         return jsonify({
@@ -119,12 +119,12 @@ def test_intent_analysis():
 def reload_intent_config():
     """重新加载意图识别配置"""
     try:
-        intent_prompt_service.reload_config()
+        intent_service.load_config()
         
         return jsonify({
             'success': True,
             'message': '意图识别配置已重新加载',
-            'timestamp': intent_prompt_service.load_config.__name__
+            'timestamp': intent_service._log_analysis_metrics.__name__
         })
         
     except Exception as e:
@@ -140,11 +140,16 @@ def get_prompt_templates():
     try:
         scenario = request.args.get('scenario')
         
+        config = intent_service.config or {}
+        intent_prompts = config.get('intent_prompts', {})
+        llm_config = config.get('llm_config', {})
+        
         response_data = {
-            'system_prompt': intent_prompt_service.get_system_prompt(scenario),
-            'user_prompt_template': intent_prompt_service.get_user_prompt_template(),
+            'system_prompt': intent_prompts.get('system_prompt', ''),
+            'user_prompt_template': intent_prompts.get('user_prompt_template', ''),
             'scenario': scenario,
-            'model_parameters': intent_prompt_service.get_model_parameters()
+            'model_parameters': llm_config.get('parameters', {}),
+            'confidence_threshold': intent_prompts.get('confidence_threshold', 0.6)
         }
         
         return jsonify({
@@ -165,15 +170,17 @@ def get_enhanced_keywords():
     try:
         scenario = request.args.get('scenario')
         
-        enhanced_keywords = intent_prompt_service.get_enhanced_keywords(scenario)
-        
-        # 获取通用关键词配置
-        keyword_config = intent_prompt_service.config.get('keyword_enhancement', {}) if intent_prompt_service.config else {}
+        config = intent_service.config or {}
+        keyword_analysis = config.get('keyword_analysis', {})
         
         response_data = {
-            'scenario_keywords': enhanced_keywords,
-            'general_keywords': keyword_config,
-            'scenario': scenario
+            'intent_keywords': keyword_analysis.get('intent_keywords', {}),
+            'weights': keyword_analysis.get('weights', {}),
+            'file_detection': keyword_analysis.get('file_detection', {}),
+            'action_verbs': keyword_analysis.get('action_verbs', {}),
+            'context_rules': keyword_analysis.get('context_rules', {}),
+            'scenario': scenario,
+            'enabled': keyword_analysis.get('enabled', True)
         }
         
         return jsonify({
@@ -192,7 +199,14 @@ def get_enhanced_keywords():
 def get_confidence_rules():
     """获取置信度调整规则"""
     try:
-        confidence_rules = intent_prompt_service.config.get('confidence_rules', {}) if intent_prompt_service.config else {}
+        config = intent_service.config or {}
+        
+        confidence_rules = {
+            'confidence_threshold': config.get('intent_prompts', {}).get('confidence_threshold', 0.6),
+            'fallback_config': config.get('fallback_config', {}),
+            'error_handling': config.get('error_handling', {}),
+            'keyword_weights': config.get('keyword_analysis', {}).get('weights', {})
+        }
         
         return jsonify({
             'success': True,

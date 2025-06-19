@@ -554,7 +554,7 @@ def analyze_document_structure(doc_id):
         document_tree = build_document_tree(document)
         
         # 调用LLM分析服务
-        from app.services.llm_service import LLMService
+        from app.services.llm import LLMService
         
         analysis_result = LLMService.analyze_document_structure(
             document_name=document.name,

@@ -62,10 +62,9 @@ def get_llm_config():
 def get_llm_models():
     """获取可用的LLM模型"""
     try:
-        from app.services.llm_service import LLMService
+        from app.services.llm import LLMService
         
-        llm_service = LLMService()
-        models = llm_service.get_available_models()
+        models = LLMService.get_available_models()
         
         return jsonify({
             'success': True,
@@ -85,10 +84,9 @@ def get_llm_models():
 def get_llm_status():
     """获取LLM服务状态"""
     try:
-        from app.services.llm_service import LLMService
+        from app.services.llm import LLMService
         
-        llm_service = LLMService()
-        status = llm_service.get_service_status()
+        status = LLMService.get_service_status()
         
         return jsonify({
             'success': True,
