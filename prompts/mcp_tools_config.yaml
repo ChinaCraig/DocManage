@@ -1,8 +1,8 @@
 # ==========================================
-# MCP工具配置文件 v2.0
+# MCP工具分析配置文件 v3.0
 # ==========================================
-# 说明：该配置文件定义了当前支持的MCP工具列表和相关配置
-# 版本：v2.0 - 增强参数提取功能
+# 说明：该配置文件定义了MCP工具分析的基础配置参数
+# 版本：v3.0 - 移除硬编码工具列表，改为从MCP管理器动态获取
 # ==========================================
 
 # ==========================================
@@ -20,234 +20,13 @@ llm_analysis:
     max_retries: 2
 
 # ==========================================
-# MCP工具分析提示词配置 v2.0
-# ==========================================
-prompts:
-  # 系统提示词
-  system: |
-    你是一个专业的MCP工具分析专家。你需要分析用户的操作请求，确定需要调用哪些MCP工具，并从用户请求中提取具体的参数值。
-
-    请严格按照以下JSON格式返回分析结果（不要添加markdown格式或其他文本）：
-    {
-      "tools_needed": ["工具名称1", "工具名称2"],
-      "confidence": 0.0-1.0之间的数字,
-      "reasoning": "说明选择这些工具的依据",
-      "execution_sequence": [
-        {
-          "tool_name": "工具名称",
-          "description": "执行描述",
-          "parameters": {
-            "参数名": "从用户请求中提取的具体参数值"
-          }
-        }
-      ]
-    }
-
-    当前支持的MCP工具及其参数：
-    
-    1. create_file - 创建文件
-       参数：
-       - file_name: 文件名（必须包含扩展名，如：report.txt、README.md）
-       - content: 文件内容（可选，默认为空）
-       - parent_folder: 父目录名称（可选，如：documents、test）
-       
-    2. create_folder - 创建文件夹
-       参数：
-       - folder_name: 文件夹名称（如：新项目、test1）
-       - parent_folder: 父目录名称（可选，如：projects、test）
-       - description: 文件夹描述（可选）
-
-    参数提取要求：
-    1. 从用户请求中提取具体的参数值，不要返回描述性文字
-    2. 如果用户没有明确指定某个参数，则不要包含该参数
-    3. 文件名必须包含扩展名，如果用户没有指定，默认为.txt
-    4. 目录名称要准确提取，不要包含多余的文字
-    5. 对于复杂请求，按逻辑顺序安排执行序列
-    
-    示例分析：
-    
-    用户请求："在test文件夹下创建一个report.txt文件"
-    正确返回：
-    {
-      "tools_needed": ["create_file"],
-      "confidence": 0.95,
-      "reasoning": "用户明确要求创建文件，并指定了文件名和位置",
-      "execution_sequence": [
-        {
-          "tool_name": "create_file",
-          "description": "在test文件夹下创建report.txt文件",
-          "parameters": {
-            "file_name": "report.txt",
-            "parent_folder": "test"
-          }
-        }
-      ]
-    }
-    
-    用户请求："创建一个新项目文件夹，然后在里面创建readme文件"
-    正确返回：
-    {
-      "tools_needed": ["create_folder", "create_file"],
-      "confidence": 0.90,
-      "reasoning": "用户需要先创建文件夹，然后在其中创建文件，需要两个工具",
-      "execution_sequence": [
-        {
-          "tool_name": "create_folder",
-          "description": "创建新项目文件夹",
-          "parameters": {
-            "folder_name": "新项目"
-          }
-        },
-        {
-          "tool_name": "create_file",
-          "description": "在新项目文件夹中创建readme文件",
-          "parameters": {
-            "file_name": "readme.txt",
-            "parent_folder": "新项目"
-          }
-        }
-      ]
-    }
-
-  # 用户提示词模板
-  user_template: |
-    请分析以下用户的操作请求，确定需要调用哪些MCP工具，并提取具体的参数值：
-
-    用户请求："{query}"
-
-    请返回JSON格式的工具分析结果：
-
-# ==========================================
-# 支持的MCP工具列表
-# ==========================================
-supported_tools:
-  # 文件创建工具
-  create_file:
-    name: "创建文件"
-    description: "创建各种类型的文件"
-    category: "file_operations"
-    enabled: true
-    parameters:
-      - name: "file_name"
-        type: "string"
-        required: true
-        description: "文件名（包含扩展名）"
-      - name: "content"
-        type: "string" 
-        required: false
-        description: "文件内容"
-      - name: "parent_folder"
-        type: "string"
-        required: false
-        description: "父目录名称"
-    supported_extensions:
-      - ".txt"
-      - ".md"
-      - ".doc"
-      - ".docx"
-      - ".pdf"
-      - ".xls"
-      - ".xlsx"
-      - ".json"
-      - ".csv"
-      - ".html"
-      - ".py"
-      - ".js"
-
-  # 文件夹创建工具
-  create_folder:
-    name: "创建文件夹"
-    description: "创建文件夹或目录"
-    category: "folder_operations"
-    enabled: true
-    parameters:
-      - name: "folder_name"
-        type: "string"
-        required: true
-        description: "文件夹名称"
-      - name: "parent_folder"
-        type: "string"
-        required: false
-        description: "父目录名称"
-      - name: "description"
-        type: "string"
-        required: false
-        description: "文件夹描述"
-
-  # 文件列表工具
-  list_files:
-    name: "列出文件"
-    description: "列出指定目录下的文件和文件夹"
-    category: "file_operations"
-    enabled: false  # 暂未实现
-    parameters:
-      - name: "folder_path"
-        type: "string"
-        required: false
-        description: "目录路径（默认为根目录）"
-      - name: "file_type_filter"
-        type: "string"
-        required: false
-        description: "文件类型过滤"
-
-  # 文件移动工具  
-  move_file:
-    name: "移动文件"
-    description: "移动文件到指定位置"
-    category: "file_operations"
-    enabled: false  # 暂未实现
-    parameters:
-      - name: "source_file"
-        type: "string"
-        required: true
-        description: "源文件路径"
-      - name: "target_folder"
-        type: "string"
-        required: true
-        description: "目标文件夹"
-      - name: "new_name"
-        type: "string"
-        required: false
-        description: "新文件名（用于重命名）"
-
-  # 文件删除工具
-  delete_file:
-    name: "删除文件"
-    description: "删除指定文件或文件夹"
-    category: "file_operations"
-    enabled: false  # 暂未实现
-    parameters:
-      - name: "file_path"
-        type: "string"
-        required: true
-        description: "要删除的文件或文件夹路径"
-      - name: "force_delete"
-        type: "boolean"
-        required: false
-        description: "是否强制删除"
-
-# ==========================================
-# 工具分类配置
-# ==========================================
-tool_categories:
-  file_operations:
-    name: "文件操作"
-    description: "文件的创建、移动、删除等操作"
-    tools: ["create_file", "move_file", "delete_file", "list_files"]
-    
-  folder_operations:
-    name: "文件夹操作"
-    description: "文件夹的创建、管理等操作"
-    tools: ["create_folder"]
-
-# ==========================================
 # 错误处理配置
 # ==========================================
 error_handling:
   # 工具不存在时的处理
   tool_not_found:
     message: "抱歉，您请求的操作「{tool_name}」暂不支持。"
-    suggestion: "当前支持的操作包括：文件创建、文件夹创建。"
+    suggestion: "请检查当前可用的MCP工具。"
     
   # 工具被禁用时的处理
   tool_disabled:
@@ -271,4 +50,54 @@ performance:
   
   # 重试配置
   max_retries: 2
-  retry_delay: 1 
+  retry_delay: 1
+
+# ==========================================
+# 参数提取配置
+# ==========================================
+parameter_extraction:
+  # 文件名提取模式
+  file_name_patterns:
+    - r'(?:创建|生成|新建).*?([a-zA-Z0-9\u4e00-\u9fff]+\.[a-zA-Z0-9]+)'
+    - r'([a-zA-Z0-9\u4e00-\u9fff]+\.[a-zA-Z0-9]+)'
+  
+  # 文件夹名提取模式
+  folder_name_patterns:
+    - r'(?:创建|新建).*?([a-zA-Z0-9\u4e00-\u9fff]+)(?:文件夹|目录)'
+    - r'([a-zA-Z0-9\u4e00-\u9fff]+)(?:文件夹|目录)'
+  
+  # 父目录提取模式
+  parent_folder_patterns:
+    - r'在\s*([a-zA-Z0-9\u4e00-\u9fff]+)\s*(?:文件夹|目录|下)'
+    - r'([a-zA-Z0-9\u4e00-\u9fff]+)\s*(?:文件夹|目录)\s*下'
+
+# ==========================================
+# 关键词匹配配置
+# ==========================================
+keyword_matching:
+  # 创建操作关键词
+  create_keywords:
+    - "创建"
+    - "新建"
+    - "生成"
+    - "制作"
+  
+  # 文件相关关键词
+  file_keywords:
+    - "文件"
+    - ".txt"
+    - ".doc"
+    - ".pdf"
+    - ".md"
+    - ".json"
+    - ".csv"
+    - ".html"
+    - ".py"
+    - ".js"
+  
+  # 文件夹相关关键词
+  folder_keywords:
+    - "文件夹"
+    - "目录"
+    - "folder"
+    - "directory" 

@@ -29,10 +29,10 @@ servers:
     enabled: false
   puppeteer:
     args:
-    - /path/to/puppeteer-mcp-server/build/index.js
-    command: node
+    - '@modelcontextprotocol/server-puppeteer'
+    command: npx
     description: 浏览器自动化操作
-    enabled: false
+    enabled: true
   sqlite:
     args:
     - '@modelcontextprotocol/server-sqlite'

@@ -205,7 +205,7 @@ def semantic_search():
                     # 步骤2：使用标准MCP系统分析和执行工具
                     try:
                         from app.services.mcp.servers.mcp_manager import MCPManager
-                        from app.services.mcp_tool_analyzer import mcp_tool_analyzer
+                        from app.services.mcp_tool_analyzer import create_mcp_tool_analyzer
                         
                         # 创建MCP管理器实例
                         mcp_manager = MCPManager()
@@ -231,6 +231,9 @@ def semantic_search():
                                 }
                                 
                                 return jsonify({'success': True, 'data': standardized_response})
+                        
+                        # 创建带有MCP管理器的工具分析器
+                        mcp_tool_analyzer = create_mcp_tool_analyzer(mcp_manager)
                         
                         # 使用LLM分析需要的工具
                         tool_analysis = mcp_tool_analyzer.analyze_tools_needed(query_text)
@@ -885,8 +888,11 @@ def hybrid_search():
                     skip_search = True
                     
                     # 使用完整的MCP工具分析和执行流程
-                    from app.services.mcp_tool_analyzer import mcp_tool_analyzer
+                    from app.services.mcp_tool_analyzer import create_mcp_tool_analyzer
                     from app.services.mcp_tool_executor import mcp_tool_executor
+                    
+                    # 创建工具分析器实例
+                    mcp_tool_analyzer = create_mcp_tool_analyzer()
                     
                     # 1. 分析需要的工具
                     tool_analysis = mcp_tool_analyzer.analyze_tools_needed(query_text)

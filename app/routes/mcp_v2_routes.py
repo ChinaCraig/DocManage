@@ -400,4 +400,136 @@ def reload_config():
         return jsonify({
             "success": False,
             "error": str(e)
-        }), 500 
+        }), 500
+
+# ===================== MCP服务安装管理API =====================
+
+@mcp_v2_bp.route('/installation/check', methods=['POST'])
+def check_services_installation():
+    """检查指定工具所需的MCP服务安装状态"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({
+                "success": False,
+                "error": "请求数据不能为空"
+            }), 400
+        
+        tools_needed = data.get('tools_needed', [])
+        if not tools_needed:
+            return jsonify({
+                "success": False,
+                "error": "tools_needed 参数是必需的"
+            }), 400
+        
+        from app.services.mcp.servers.mcp_installer import MCPInstaller
+        installer = MCPInstaller()
+        
+        # 在后台运行异步检查
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        result = loop.run_until_complete(installer.check_and_install_required_services(tools_needed))
+        loop.close()
+        
+        return jsonify({
+            "success": True,
+            "data": result
+        })
+        
+    except Exception as e:
+        logger.error(f"检查服务安装状态失败: {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@mcp_v2_bp.route('/installation/service/<service_name>/check', methods=['GET'])
+def check_single_service_installation(service_name):
+    """检查单个服务的安装状态"""
+    try:
+        from app.services.mcp.servers.mcp_installer import MCPInstaller
+        installer = MCPInstaller()
+        
+        # 在后台运行异步检查
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        result = loop.run_until_complete(installer.check_single_service(service_name))
+        loop.close()
+        
+        return jsonify({
+            "success": True,
+            "data": result
+        })
+        
+    except Exception as e:
+        logger.error(f"检查服务 {service_name} 安装状态失败: {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@mcp_v2_bp.route('/installation/service/<service_name>/install', methods=['POST'])
+def install_single_service(service_name):
+    """安装单个MCP服务"""
+    try:
+        from app.services.mcp.servers.mcp_installer import MCPInstaller
+        installer = MCPInstaller()
+        
+        # 在后台运行异步安装
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        result = loop.run_until_complete(installer.install_single_service(service_name))
+        loop.close()
+        
+        return jsonify({
+            "success": result["success"],
+            "data": result
+        })
+        
+    except Exception as e:
+        logger.error(f"安装服务 {service_name} 失败: {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@mcp_v2_bp.route('/installation/service/<service_name>/requirements', methods=['GET'])
+def get_service_requirements(service_name):
+    """获取服务的安装要求"""
+    try:
+        from app.services.mcp.servers.mcp_installer import MCPInstaller
+        installer = MCPInstaller()
+        
+        requirements = installer.get_installation_requirements(service_name)
+        
+        return jsonify({
+            "success": True,
+            "data": requirements
+        })
+        
+    except Exception as e:
+        logger.error(f"获取服务 {service_name} 安装要求失败: {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@mcp_v2_bp.route('/installation/cache/clear', methods=['POST'])
+def clear_installation_cache():
+    """清除安装状态缓存"""
+    try:
+        from app.services.mcp.servers.mcp_installer import MCPInstaller
+        installer = MCPInstaller()
+        installer.clear_cache()
+        
+        return jsonify({
+            "success": True,
+            "message": "安装状态缓存已清除"
+        })
+        
+    except Exception as e:
+        logger.error(f"清除安装缓存失败: {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500

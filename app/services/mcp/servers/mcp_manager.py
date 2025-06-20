@@ -8,6 +8,7 @@ import logging
 from typing import Dict, List, Any, Optional
 from ..config.mcp_config import MCPConfig, MCPServerConfig
 from ..clients.mcp_client import MCPClient, MCPTool, MCPToolResult
+from .mcp_installer import MCPInstaller
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +18,7 @@ class MCPManager:
     def __init__(self, config_path: str = None):
         self.config = MCPConfig(config_path)
         self.client = MCPClient()
+        self.installer = MCPInstaller(self.config)
         self.is_initialized = False
     
     async def initialize(self) -> bool:
@@ -138,4 +140,24 @@ class MCPManager:
                 query_lower in tool.description.lower()):
                 matching_tools.append(tool)
         
-        return matching_tools 
+        return matching_tools
+    
+    async def check_and_install_services_for_tools(self, tools_needed: List[str]) -> Dict[str, Any]:
+        """为指定工具检查并安装所需的MCP服务"""
+        return await self.installer.check_and_install_required_services(tools_needed)
+    
+    async def check_service_installation(self, service_name: str) -> Dict[str, Any]:
+        """检查单个服务的安装状态"""
+        return await self.installer.check_single_service(service_name)
+    
+    async def install_service(self, service_name: str) -> Dict[str, Any]:
+        """安装单个MCP服务"""
+        return await self.installer.install_single_service(service_name)
+    
+    def get_service_requirements(self, service_name: str) -> Dict[str, Any]:
+        """获取服务的安装要求"""
+        return self.installer.get_installation_requirements(service_name)
+    
+    def clear_installation_cache(self):
+        """清除安装状态缓存"""
+        self.installer.clear_cache()

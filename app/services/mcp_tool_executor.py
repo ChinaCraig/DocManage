@@ -9,6 +9,7 @@ import time
 import re
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
+from .mcp.servers.mcp_installer import MCPInstaller
 
 logger = logging.getLogger(__name__)
 
@@ -28,8 +29,10 @@ class MCPToolCall:
 class MCPToolExecutor:
     """基于LLM分析结果的MCP工具执行器"""
     
-    def __init__(self):
+    def __init__(self, mcp_manager=None):
         self.tool_history = []
+        self.installer = MCPInstaller()
+        self.mcp_manager = mcp_manager
     
     async def execute_tools_from_analysis(self, query: str, tool_analysis: Dict[str, Any]) -> List[MCPToolCall]:
         """根据LLM分析结果执行工具"""
@@ -39,6 +42,26 @@ class MCPToolExecutor:
             
             logger.info(f"开始执行MCP工具: {tools_needed}")
             
+            # 步骤1: 检查并安装所需的MCP服务
+            logger.info("步骤1: 检查并安装所需的MCP服务")
+            install_result = await self.installer.check_and_install_required_services(tools_needed)
+            
+            if not install_result["success"]:
+                logger.error(f"MCP服务安装失败: {install_result}")
+                return [MCPToolCall(
+                    'service_installation_error', 
+                    install_result,
+                    error=f"无法安装所需的MCP服务: {install_result.get('failed_services', [])}"
+                )]
+            
+            if install_result["installed_services"]:
+                logger.info(f"成功安装MCP服务: {install_result['installed_services']}")
+            
+            if install_result["skipped_services"]:
+                logger.info(f"跳过的MCP服务: {install_result['skipped_services']}")
+            
+            # 步骤2: 执行工具
+            logger.info("步骤2: 执行MCP工具")
             results = []
             
             # 如果有执行序列，按序列执行
