@@ -2172,11 +2172,11 @@ function showSuccess(message) {
 }
 
 function showError(message) {
-    showToast(message, 'error', 5000);
+    showToast(message, 'error', 3000);
 }
 
 function showWarning(message) {
-    showToast(message, 'warning', 4000);
+    showToast(message, 'warning', 3000);
 }
 
 function showInfo(message) {
@@ -3982,7 +3982,7 @@ async function selectFileFromChat(docId) {
         }
         
         // 7. 显示成功提示
-        showToast(`已定位到文档：${node.name}`, 'success', 2000);
+        showToast(`已定位到文档：${node.name}`, 'success', 3000);
         console.log(`文件选择完成: ${node.name}`);
         
     } catch (error) {

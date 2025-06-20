@@ -2205,9 +2205,11 @@
         /* Toast 通知系统 */
         .toast-container {
             position: fixed;
-            top: 80px;
-            right: 20px;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
             z-index: 1055;
+            pointer-events: none;
         }
 
         .toast {
@@ -2216,6 +2218,7 @@
             border-radius: 10px;
             box-shadow: 0 5px 15px rgba(0,0,0,0.2);
             max-width: 350px;
+            pointer-events: auto;
         }
 
         .toast.success {
