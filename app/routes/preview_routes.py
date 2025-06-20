@@ -498,8 +498,8 @@ def preview_text(doc_id):
         # 获取预览服务
         preview_service = PreviewServiceFactory.get_service('text')
         
-        # 提取文档内容
-        content_data = preview_service.extract_content(document.file_path)
+        # 提取文档内容，对于MCP创建的文件传递document_id
+        content_data = preview_service.extract_content(document.file_path, document.id)
         
         return jsonify({
             'success': True,
@@ -540,8 +540,46 @@ def preview_text_raw(doc_id):
             logger.warning(f"文件类型不匹配 - 期望文本类型，实际: {file_type}")
             abort(400)
         
-        # 检查文件是否存在
+        # 检查文件是否存在，对于MCP创建的文件特殊处理
         logger.info(f"检查文件路径: {document.file_path}")
+        
+        # 如果是MCP创建的虚拟文件，从数据库获取内容
+        if document.file_path.startswith('mcp_created/'):
+            logger.info(f"检测到MCP创建的文件，从数据库获取内容: {document.file_path}")
+            
+            from app.models.document_models import DocumentContent
+            from flask import Response
+            
+            content_record = DocumentContent.query.filter_by(document_id=document.id).first()
+            
+            if content_record and content_record.content_text:
+                content = content_record.content_text
+                
+                # 根据文件扩展名设置MIME类型
+                import mimetypes
+                mime_type, _ = mimetypes.guess_type(document.name)
+                if not mime_type:
+                    mime_type = 'text/plain'
+                
+                return Response(
+                    content,
+                    mimetype=mime_type,
+                    headers={
+                        'Content-Disposition': f'inline; filename="{document.name}"',
+                        'Content-Type': f'{mime_type}; charset=utf-8'
+                    }
+                )
+            else:
+                logger.warning(f"MCP文件没有内容记录: {document.file_path}")
+                return Response(
+                    "",  # 空内容
+                    mimetype='text/plain',
+                    headers={
+                        'Content-Disposition': f'inline; filename="{document.name}"',
+                        'Content-Type': 'text/plain; charset=utf-8'
+                    }
+                )
+        
         if not os.path.exists(document.file_path):
             logger.error(f"文件不存在: {document.file_path}")
             abort(404)
@@ -580,6 +618,7 @@ def save_text(doc_id):
     try:
         from flask import request
         from app import db
+        from datetime import datetime
         
         # 获取请求数据
         data = request.get_json()
@@ -605,39 +644,86 @@ def save_text(doc_id):
                 'error': '该文件类型不支持编辑'
             }), 400
         
-        # 检查文件是否存在
-        if not os.path.exists(document.file_path):
-            return jsonify({
-                'success': False,
-                'error': '文件不存在'
-            }), 404
-        
-        # 保存文件内容
+        # 保存文件内容，对于MCP创建的文件特殊处理
         try:
-            with open(document.file_path, 'w', encoding='utf-8') as f:
-                f.write(content)
-            
-            # 更新文件大小
-            new_size = os.path.getsize(document.file_path)
-            document.file_size = new_size
-            
-            # 更新修改时间
-            from datetime import datetime
-            document.updated_at = datetime.utcnow()
-            
-            # 保存到数据库
-            db.session.commit()
-            
-            logger.info(f"文本文件保存成功 - 文档ID: {doc_id}, 新大小: {new_size} 字节")
-            
-            return jsonify({
-                'success': True,
-                'data': {
-                    'message': '文件保存成功',
-                    'file_size': new_size,
-                    'updated_at': document.updated_at.isoformat()
-                }
-            })
+            if document.file_path.startswith('mcp_created/'):
+                # MCP创建的文件，保存到数据库
+                logger.info(f"保存MCP文件到数据库: {document.file_path}")
+                
+                from app.models.document_models import DocumentContent
+                
+                # 查找或创建内容记录
+                content_record = DocumentContent.query.filter_by(document_id=document.id).first()
+                
+                if content_record:
+                    # 更新现有记录
+                    content_record.content_text = content
+                    content_record.chunk_text = content
+                    content_record.updated_at = datetime.utcnow()
+                else:
+                    # 创建新记录
+                    content_record = DocumentContent(
+                        document_id=document.id,
+                        content_text=content,
+                        page_number=1,
+                        chunk_index=0,
+                        chunk_text=content
+                    )
+                    db.session.add(content_record)
+                
+                # 更新文件大小
+                new_size = len(content.encode('utf-8'))
+                document.file_size = new_size
+                
+                # 更新修改时间
+                document.updated_at = datetime.utcnow()
+                
+                # 保存到数据库
+                db.session.commit()
+                
+                logger.info(f"MCP文本文件保存成功 - 文档ID: {doc_id}, 新大小: {new_size} 字节")
+                
+                return jsonify({
+                    'success': True,
+                    'data': {
+                        'message': '文件保存成功',
+                        'file_size': new_size,
+                        'updated_at': document.updated_at.isoformat(),
+                        'source': 'mcp_database'
+                    }
+                })
+            else:
+                # 普通文件，保存到文件系统
+                if not os.path.exists(document.file_path):
+                    return jsonify({
+                        'success': False,
+                        'error': '文件不存在'
+                    }), 404
+                
+                with open(document.file_path, 'w', encoding='utf-8') as f:
+                    f.write(content)
+                
+                # 更新文件大小
+                new_size = os.path.getsize(document.file_path)
+                document.file_size = new_size
+                
+                # 更新修改时间
+                document.updated_at = datetime.utcnow()
+                
+                # 保存到数据库
+                db.session.commit()
+                
+                logger.info(f"文本文件保存成功 - 文档ID: {doc_id}, 新大小: {new_size} 字节")
+                
+                return jsonify({
+                    'success': True,
+                    'data': {
+                        'message': '文件保存成功',
+                        'file_size': new_size,
+                        'updated_at': document.updated_at.isoformat(),
+                        'source': 'filesystem'
+                    }
+                })
             
         except Exception as write_error:
             logger.error(f"写入文件失败 - 文档ID: {doc_id}, 错误: {str(write_error)}")

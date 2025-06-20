@@ -15,8 +15,12 @@ class TextPreviewService(BasePreviewService):
         self.supported_formats = ['txt', 'text', 'log', 'md', 'markdown', 'csv', 'json', 'xml', 'py', 'js', 'html', 'css', 'sql']
         self.max_content_length = 50000  # 最大内容长度，避免内存问题
     
-    def extract_content(self, file_path):
+    def extract_content(self, file_path, document_id=None):
         """提取文本文件内容"""
+        # 检查是否是MCP创建的虚拟文件
+        if file_path.startswith('mcp_created/'):
+            return self._extract_mcp_content(file_path, document_id)
+        
         if not self.validate_file(file_path):
             raise FileNotFoundError(f"文件不存在或无法读取: {file_path}")
         
@@ -58,6 +62,78 @@ class TextPreviewService(BasePreviewService):
             
         except Exception as e:
             logger.error(f"❌ 文本文件内容提取失败: {file_path}, 错误: {str(e)}")
+            raise
+    
+    def _extract_mcp_content(self, file_path, document_id):
+        """从数据库提取MCP创建的文件内容"""
+        try:
+            # 导入模型
+            from app.models.document_models import DocumentNode, DocumentContent
+            from app import db
+            
+            # 如果有document_id，直接查询
+            if document_id:
+                # 查找文档内容
+                content_record = db.session.query(DocumentContent).filter_by(
+                    document_id=document_id
+                ).first()
+                
+                if content_record and content_record.content_text:
+                    content = content_record.content_text
+                else:
+                    # 如果没有内容记录，返回空内容
+                    content = ""
+            else:
+                # 通过file_path查找文档
+                document = db.session.query(DocumentNode).filter_by(
+                    file_path=file_path,
+                    is_deleted=False
+                ).first()
+                
+                if not document:
+                    raise FileNotFoundError(f"MCP文件不存在: {file_path}")
+                
+                # 查找文档内容
+                content_record = db.session.query(DocumentContent).filter_by(
+                    document_id=document.id
+                ).first()
+                
+                if content_record and content_record.content_text:
+                    content = content_record.content_text
+                else:
+                    content = ""
+            
+            # 如果内容太长，截断并添加提示
+            if len(content) > self.max_content_length:
+                content = content[:self.max_content_length] + "\n\n... (内容已截断，完整内容请下载文件查看) ..."
+                is_truncated = True
+            else:
+                is_truncated = False
+            
+            # 统计基本信息
+            lines = content.count('\n') + 1 if content else 0
+            words = len(content.split()) if content else 0
+            chars = len(content)
+            
+            content_data = {
+                'type': 'text',
+                'content': content,
+                'encoding': 'utf-8',  # MCP创建的文件默认使用UTF-8
+                'is_truncated': is_truncated,
+                'metadata': {
+                    'lines': lines,
+                    'words': words,
+                    'characters': chars,
+                    'file_type': self._get_file_type_description(file_path),
+                    'source': 'mcp_created'
+                }
+            }
+            
+            logger.info(f"✅ MCP文件内容提取成功: {file_path}, 字符数: {chars}")
+            return content_data
+            
+        except Exception as e:
+            logger.error(f"❌ MCP文件内容提取失败: {file_path}, 错误: {str(e)}")
             raise
     
     def _detect_encoding(self, file_path):

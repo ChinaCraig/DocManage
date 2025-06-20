@@ -140,10 +140,11 @@ class MCPToolAnalyzer:
         
         system_prompt = f"""你是一个专业的MCP工具分析专家。你需要分析用户的操作请求，确定需要调用哪些MCP工具，并从用户请求中提取具体的参数值。
 
-请严格按照以下JSON格式返回分析结果（不要添加markdown格式或其他文本）：
+【重要】请严格按照以下JSON格式返回分析结果，确保JSON语法完全正确：
+
 {{
   "tools_needed": ["工具名称1", "工具名称2"],
-  "confidence": 0.0-1.0之间的数字,
+  "confidence": 0.9,
   "reasoning": "说明选择这些工具的依据",
   "execution_sequence": [
     {{
@@ -156,6 +157,13 @@ class MCPToolAnalyzer:
   ]
 }}
 
+【格式要求】：
+1. 不要添加markdown代码块标记（如```json）
+2. 确保每个execution_sequence项目都有完整的"parameters": {{}}结构
+3. 所有字符串必须用双引号包围
+4. 数组和对象的语法必须正确
+5. 每行末尾不要有多余的逗号
+
 当前可用的MCP工具及其参数：
 
 {tools_text}
@@ -165,7 +173,41 @@ class MCPToolAnalyzer:
 2. 如果用户没有明确指定某个参数，则不要包含该参数
 3. 文件名必须包含扩展名，如果用户没有指定，根据上下文推断合适的扩展名
 4. 目录名称要准确提取，不要包含多余的文字
-5. 对于复杂请求，按逻辑顺序安排执行序列"""
+5. 对于复杂请求，按逻辑顺序安排执行序列
+
+【JSON示例】：
+对于"在test文件夹下创建test1和test2文件夹，在test1下创建1.txt文件"：
+{{
+  "tools_needed": ["create_folder", "create_file"],
+  "confidence": 0.9,
+  "reasoning": "用户需要创建文件夹和文件两个操作，需要分别调用create_folder和create_file工具",
+  "execution_sequence": [
+    {{
+      "tool_name": "create_folder",
+      "description": "在test文件夹下创建test1文件夹",
+      "parameters": {{
+        "folder_name": "test1",
+        "parent_folder": "test"
+      }}
+    }},
+    {{
+      "tool_name": "create_folder", 
+      "description": "在test文件夹下创建test2文件夹",
+      "parameters": {{
+        "folder_name": "test2",
+        "parent_folder": "test"
+      }}
+    }},
+    {{
+      "tool_name": "create_file",
+      "description": "在test1文件夹下创建1.txt文件",
+      "parameters": {{
+        "file_name": "1.txt",
+        "parent_folder": "test1"
+      }}
+    }}
+  ]
+}}"""
 
         return system_prompt
     

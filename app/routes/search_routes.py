@@ -262,52 +262,96 @@ def semantic_search():
                                     "data": f"🔧 工具分析: {tool_analysis['reasoning']}"
                                 })
                             
-                            # 执行每个工具
-                            for tool_name in tools_needed:
-                                try:
-                                    # 从tool_analysis中获取执行序列
-                                    execution_sequence = tool_analysis.get('execution_sequence', [])
-                                    tool_arguments = {}
+                            # 按执行序列执行工具，确保所有工具都能执行
+                            execution_sequence = tool_analysis.get('execution_sequence', [])
+                            if execution_sequence:
+                                # 按序列执行
+                                for step in execution_sequence:
+                                    tool_name = step.get('tool_name')
+                                    tool_arguments = step.get('parameters', {})
                                     
-                                    # 找到对应工具的参数
-                                    for step in execution_sequence:
-                                        if step.get('tool_name') == tool_name:
-                                            tool_arguments = step.get('parameters', {})
-                                            break
-                                    
-                                    # 调用标准MCP工具
-                                    loop = asyncio.new_event_loop()
-                                    asyncio.set_event_loop(loop)
-                                    result = loop.run_until_complete(
-                                        mcp_manager.call_tool(tool_name, tool_arguments)
-                                    )
-                                    loop.close()
-                                    
-                                    # 处理执行结果
-                                    if result.isError:
+                                    if not tool_name:
+                                        continue
+                                        
+                                    try:
+                                        logger.info(f"执行工具: {tool_name}, 参数: {tool_arguments}")
+                                        
+                                        # 调用标准MCP工具
+                                        loop = asyncio.new_event_loop()
+                                        asyncio.set_event_loop(loop)
+                                        result = loop.run_until_complete(
+                                            mcp_manager.call_tool(tool_name, tool_arguments)
+                                        )
+                                        loop.close()
+                                        
+                                        # 处理执行结果
+                                        if result.isError:
+                                            error_msg = result.content[0].get('text', 'Unknown error') if result.content else 'Unknown error'
+                                            logger.error(f"工具 {tool_name} 执行失败: {error_msg}")
+                                            message_content.append({
+                                                "type": "text",
+                                                "data": f"❌ 工具 {tool_name} 执行失败: {error_msg}"
+                                            })
+                                        else:
+                                            # 成功执行
+                                            tool_output = result.content[0].get('text', '操作完成') if result.content else '操作完成'
+                                            logger.info(f"工具 {tool_name} 执行成功: {tool_output}")
+                                            message_content.append({
+                                                "type": "tool_call",
+                                                "data": {
+                                                    "tool": tool_name,
+                                                    "params": tool_arguments,
+                                                    "result": tool_output,
+                                                    "user_visible": True
+                                                }
+                                            })
+                                            
+                                    except Exception as tool_error:
+                                        logger.error(f"执行工具 {tool_name} 异常: {tool_error}")
                                         message_content.append({
                                             "type": "text",
-                                            "data": f"❌ 工具 {tool_name} 执行失败: {result.content[0].get('text', 'Unknown error') if result.content else 'Unknown error'}"
+                                            "data": f"❌ 工具 {tool_name} 执行异常: {str(tool_error)}"
                                         })
-                                    else:
-                                        # 成功执行
-                                        tool_output = result.content[0].get('text', '操作完成') if result.content else '操作完成'
-                                        message_content.append({
-                                            "type": "tool_call",
-                                            "data": {
-                                                "tool": tool_name,
-                                                "params": tool_arguments,
-                                                "result": tool_output,
-                                                "user_visible": True
-                                            }
-                                        })
+                            else:
+                                # 降级到按工具列表执行
+                                for tool_name in tools_needed:
+                                    try:
+                                        logger.info(f"降级执行工具: {tool_name}")
                                         
-                                except Exception as tool_error:
-                                    logger.error(f"执行工具 {tool_name} 失败: {tool_error}")
-                                    message_content.append({
-                                        "type": "text",
-                                        "data": f"❌ 工具 {tool_name} 执行异常: {str(tool_error)}"
-                                    })
+                                        # 调用标准MCP工具
+                                        loop = asyncio.new_event_loop()
+                                        asyncio.set_event_loop(loop)
+                                        result = loop.run_until_complete(
+                                            mcp_manager.call_tool(tool_name, {})
+                                        )
+                                        loop.close()
+                                        
+                                        # 处理执行结果
+                                        if result.isError:
+                                            error_msg = result.content[0].get('text', 'Unknown error') if result.content else 'Unknown error'
+                                            message_content.append({
+                                                "type": "text",
+                                                "data": f"❌ 工具 {tool_name} 执行失败: {error_msg}"
+                                            })
+                                        else:
+                                            # 成功执行
+                                            tool_output = result.content[0].get('text', '操作完成') if result.content else '操作完成'
+                                            message_content.append({
+                                                "type": "tool_call",
+                                                "data": {
+                                                    "tool": tool_name,
+                                                    "params": {},
+                                                    "result": tool_output,
+                                                    "user_visible": True
+                                                }
+                                            })
+                                            
+                                    except Exception as tool_error:
+                                        logger.error(f"执行工具 {tool_name} 失败: {tool_error}")
+                                        message_content.append({
+                                            "type": "text",
+                                            "data": f"❌ 工具 {tool_name} 执行异常: {str(tool_error)}"
+                                        })
                         
                         # 收集所有工具执行结果
                         mcp_results = []

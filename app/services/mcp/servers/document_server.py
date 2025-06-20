@@ -327,17 +327,32 @@ class DocumentMCPServer:
                 # 创建新文件节点
                 new_file = DocumentNode(
                     name=file_name,
-                    type=file_type,
+                    type='file',  # 节点类型固定为'file'
                     parent_id=parent_id,
+                    file_type=file_type,  # 文件扩展名类型存储在file_type字段
                     description=f'通过MCP工具创建的文件{parent_info_msg}',
                     file_path=f"mcp_created/{uuid.uuid4().hex}_{file_name}",  # 虚拟文件路径
-                    file_content=content,  # 存储文件内容
+                    file_size=len(content.encode('utf-8')) if content else 0,  # 设置文件大小
                     created_at=datetime.now(),
                     updated_at=datetime.now(),
                     is_deleted=False
                 )
                 
                 db.session.add(new_file)
+                db.session.flush()  # 获取文件ID
+                
+                # 如果有文件内容，创建DocumentContent记录
+                if content:
+                    from app.models.document_models import DocumentContent
+                    new_content = DocumentContent(
+                        document_id=new_file.id,
+                        content_text=content,
+                        page_number=1,
+                        chunk_index=0,
+                        chunk_text=content
+                    )
+                    db.session.add(new_content)
+                
                 db.session.commit()
                 
                 success_message = f"成功创建文件 '{file_name}'{parent_info_msg} (ID: {new_file.id})"
