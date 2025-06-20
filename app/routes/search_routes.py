@@ -309,6 +309,28 @@ def semantic_search():
                                         "data": f"❌ 工具 {tool_name} 执行异常: {str(tool_error)}"
                                     })
                         
+                        # 收集所有工具执行结果
+                        mcp_results = []
+                        for i, content_item in enumerate(message_content):
+                            if content_item.get("type") == "tool_call":
+                                mcp_results.append({
+                                    'tool_name': content_item["data"]["tool"],
+                                    'arguments': content_item["data"]["params"],
+                                    'result': content_item["data"]["result"],
+                                    'error': None,
+                                    'timestamp': time.time()
+                                })
+                            elif content_item.get("type") == "text" and "❌" in content_item.get("data", ""):
+                                # 处理失败的工具调用
+                                tool_name = tools_needed[0] if tools_needed else "unknown"
+                                mcp_results.append({
+                                    'tool_name': tool_name,
+                                    'arguments': {},
+                                    'result': None,
+                                    'error': content_item["data"],
+                                    'timestamp': time.time()
+                                })
+                        
                         # 构建标准化响应格式
                         standardized_response = {
                             "message_id": f"msg-{int(time.time())}-{hash(query_text) % 1000:03d}",
@@ -320,7 +342,8 @@ def semantic_search():
                                 'search_type': 'mcp_action',
                                 'intent_analysis': intent_analysis,
                                 'tool_analysis': tool_analysis,
-                                'mcp_system': 'standard'
+                                'mcp_system': 'standard',
+                                'mcp_results': mcp_results
                             }
                         }
                         
@@ -350,8 +373,6 @@ def semantic_search():
                             'success': True,
                             'data': standardized_response
                         })
-                    finally:
-                        loop.close()
                         
                 # 对于 knowledge_search 意图，继续执行向量检索（不需要特殊处理）
                 elif intent_type == 'knowledge_search':

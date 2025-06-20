@@ -269,16 +269,89 @@ class DocumentMCPServer:
             raise ValueError("file_name is required")
         
         try:
-            # 这里将会调用现有的数据库操作
-            return {
-                "content": [{
-                    "type": "text",
-                    "text": f"成功创建文件 '{file_name}'" + 
-                           (f" 在目录 '{parent_folder}' 下" if parent_folder else "")
-                }]
-            }
+            # 导入必要的模块
+            import sys
+            from pathlib import Path
+            
+            # 确保项目根目录在Python路径中
+            project_root = Path(__file__).parent.parent.parent.parent.parent
+            if str(project_root) not in sys.path:
+                sys.path.insert(0, str(project_root))
+            
+            # 创建Flask应用上下文
+            from app import create_app
+            flask_app = create_app()
+            
+            with flask_app.app_context():
+                from app.models.document_models import DocumentNode, db
+                from datetime import datetime
+                import uuid
+                
+                parent_id = None
+                parent_info_msg = " (在根目录下)"
+                
+                # 如果指定了父目录，先查找父目录
+                if parent_folder:
+                    logger.info(f"查找父目录: {parent_folder}")
+                    
+                    # 查找父目录（支持模糊匹配）
+                    parent_folder_node = db.session.query(DocumentNode).filter(
+                        DocumentNode.type == 'folder',
+                        DocumentNode.is_deleted == False,
+                        DocumentNode.name.like(f'%{parent_folder}%')
+                    ).first()
+                    
+                    if parent_folder_node:
+                        parent_id = parent_folder_node.id
+                        parent_info_msg = f" (在 {parent_folder_node.name} 目录下)"
+                        logger.info(f"找到父目录: {parent_folder_node.name} (ID: {parent_id})")
+                    else:
+                        logger.warning(f"未找到父目录 '{parent_folder}'，将在根目录下创建文件")
+                
+                # 检查是否已存在同名文件
+                existing_file = db.session.query(DocumentNode).filter(
+                    DocumentNode.name == file_name,
+                    DocumentNode.type != 'folder',
+                    DocumentNode.parent_id == parent_id,
+                    DocumentNode.is_deleted == False
+                ).first()
+                
+                if existing_file:
+                    error_message = f"文件 '{file_name}' 已存在于{('根目录' if parent_id is None else f'目录 {parent_folder}') }中"
+                    logger.warning(error_message)
+                    raise Exception(error_message)
+                
+                # 确定文件类型
+                file_type = self._get_file_type(file_name)
+                
+                # 创建新文件节点
+                new_file = DocumentNode(
+                    name=file_name,
+                    type=file_type,
+                    parent_id=parent_id,
+                    description=f'通过MCP工具创建的文件{parent_info_msg}',
+                    file_path=f"mcp_created/{uuid.uuid4().hex}_{file_name}",  # 虚拟文件路径
+                    file_content=content,  # 存储文件内容
+                    created_at=datetime.now(),
+                    updated_at=datetime.now(),
+                    is_deleted=False
+                )
+                
+                db.session.add(new_file)
+                db.session.commit()
+                
+                success_message = f"成功创建文件 '{file_name}'{parent_info_msg} (ID: {new_file.id})"
+                logger.info(success_message)
+                
+                return {
+                    "content": [{
+                        "type": "text",
+                        "text": success_message
+                    }]
+                }
             
         except Exception as e:
+            logger.error(f"创建文件失败: {str(e)}")
             raise Exception(f"创建文件失败: {str(e)}")
     
     async def _create_folder(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
@@ -290,16 +363,83 @@ class DocumentMCPServer:
             raise ValueError("folder_name is required")
         
         try:
-            # 这里将会调用现有的数据库操作
-            return {
-                "content": [{
-                    "type": "text",
-                    "text": f"成功创建文件夹 '{folder_name}'" + 
-                           (f" 在目录 '{parent_folder}' 下" if parent_folder else "")
-                }]
-            }
+            # 导入必要的模块
+            import sys
+            from pathlib import Path
+            
+            # 确保项目根目录在Python路径中
+            project_root = Path(__file__).parent.parent.parent.parent.parent
+            if str(project_root) not in sys.path:
+                sys.path.insert(0, str(project_root))
+            
+            # 创建Flask应用上下文
+            from app import create_app
+            flask_app = create_app()
+            
+            with flask_app.app_context():
+                from app.models.document_models import DocumentNode, db
+                from datetime import datetime
+                
+                parent_id = None
+                parent_info_msg = " (在根目录下)"
+                
+                # 如果指定了父目录，先查找父目录
+                if parent_folder:
+                    logger.info(f"查找父目录: {parent_folder}")
+                    
+                    # 查找父目录（支持模糊匹配）
+                    parent_folder_node = db.session.query(DocumentNode).filter(
+                        DocumentNode.type == 'folder',
+                        DocumentNode.is_deleted == False,
+                        DocumentNode.name.like(f'%{parent_folder}%')
+                    ).first()
+                    
+                    if parent_folder_node:
+                        parent_id = parent_folder_node.id
+                        parent_info_msg = f" (在 {parent_folder_node.name} 目录下)"
+                        logger.info(f"找到父目录: {parent_folder_node.name} (ID: {parent_id})")
+                    else:
+                        logger.warning(f"未找到父目录 '{parent_folder}'，将在根目录下创建文件夹")
+                
+                # 检查是否已存在同名文件夹
+                existing_folder = db.session.query(DocumentNode).filter(
+                    DocumentNode.name == folder_name,
+                    DocumentNode.type == 'folder',
+                    DocumentNode.parent_id == parent_id,
+                    DocumentNode.is_deleted == False
+                ).first()
+                
+                if existing_folder:
+                    error_message = f"文件夹 '{folder_name}' 已存在于{('根目录' if parent_id is None else f'目录 {parent_folder}') }中"
+                    logger.warning(error_message)
+                    raise Exception(error_message)
+                
+                # 创建新文件夹节点
+                new_folder = DocumentNode(
+                    name=folder_name,
+                    type='folder',
+                    parent_id=parent_id,
+                    description=f'通过MCP工具创建的文件夹{parent_info_msg}',
+                    created_at=datetime.now(),
+                    updated_at=datetime.now(),
+                    is_deleted=False
+                )
+                
+                db.session.add(new_folder)
+                db.session.commit()
+                
+                success_message = f"成功创建文件夹 '{folder_name}'{parent_info_msg} (ID: {new_folder.id})"
+                logger.info(success_message)
+                
+                return {
+                    "content": [{
+                        "type": "text",
+                        "text": success_message
+                    }]
+                }
             
         except Exception as e:
+            logger.error(f"创建文件夹失败: {str(e)}")
             raise Exception(f"创建文件夹失败: {str(e)}")
     
     async def _list_files(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
