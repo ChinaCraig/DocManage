@@ -2702,39 +2702,17 @@ async function sendChatMessage() {
         removeChatMessage(thinkingId);
         
         if (result.success) {
-            // 根据不同的响应类型进行处理
+            // 统一使用标准化消息格式处理
             const data = result.data;
             
-            // 检查是否为新的标准化格式
+            // 所有响应都应该使用标准化格式
             if (data.content && Array.isArray(data.content)) {
-                // 使用新的标准化消息渲染器
+                // 使用标准化消息渲染器
                 handleStandardizedMessage(data);
             } else {
-                // 向后兼容：使用旧格式处理方式
-                const intentAnalysis = data.intent_analysis;
-                
-                // 显示意图分析结果（调试用，可在生产中关闭）
-                if (intentAnalysis) {
-                    console.log('后端意图分析结果:', intentAnalysis);
-                }
-                
-                // 处理不同类型的响应
-                if (data.is_chat && data.chat_response) {
-                    // 普通聊天响应
-                    handleChatResponse(data, intentAnalysis);
-                } else if (data.search_type === 'normal_chat' && data.chat_response) {
-                    // 备用的聊天响应格式
-                    handleChatResponse(data, intentAnalysis);
-                } else if (data.mcp_results && data.mcp_results.length > 0) {
-                    // MCP工具执行结果
-                    handleMCPResponse(data, intentAnalysis);
-                } else if (data.file_results || data.results) {
-                    // 传统搜索结果格式（向后兼容）
-                    handleLegacySearchResponse(data, intentAnalysis);
-                } else {
-                    // 没有找到任何结果
-                    handleNoResultsResponse(message, selectedSimilarity);
-                }
+                // 如果后端返回旧格式，显示错误信息
+                console.error('接收到非标准化消息格式:', data);
+                addChatMessage('assistant', '❌ 接收到不支持的消息格式，请联系管理员检查后端配置。');
             }
         } else {
             // 处理错误情况
@@ -2831,7 +2809,37 @@ function renderBasicTable(tableData) {
     tableData.rows.forEach(row => {
         html += '<tr>';
         row.forEach(cell => {
-            html += `<td>${escapeHtml(String(cell))}</td>`;
+            // 检查是否是文件名链接对象 - 更严格的验证
+            if (cell && 
+                typeof cell === 'object' && 
+                !Array.isArray(cell) &&
+                cell.hasOwnProperty('text') && 
+                cell.hasOwnProperty('document_id') &&
+                cell.text && 
+                (cell.document_id !== null && cell.document_id !== undefined)) {
+                
+                console.log('renderBasicTable识别到文件链接对象:', cell);
+                
+                // 创建可点击的文件名链接
+                html += `<td><a href="#" class="file-name-link" onclick="selectFileFromChat(${cell.document_id}); return false;" title="点击定位并预览文件">${escapeHtml(cell.text)}</a></td>`;
+            } else {
+                // 普通文本内容 - 确保正确处理各种数据类型
+                let displayText = '';
+                if (cell === null || cell === undefined) {
+                    displayText = '';
+                } else if (typeof cell === 'object') {
+                    console.log('renderBasicTable发现对象但不是文件链接对象:', cell);
+                    // 如果是对象但不是文件链接对象，尝试转换为有意义的文本
+                    if (Array.isArray(cell)) {
+                        displayText = cell.join(', ');
+                    } else {
+                        displayText = cell.toString();
+                    }
+                } else {
+                    displayText = String(cell);
+                }
+                html += `<td>${escapeHtml(displayText)}</td>`;
+            }
         });
         html += '</tr>';
     });
@@ -2869,466 +2877,15 @@ function handleStandardizedMessageInteractions(message) {
     }
 }
 
-// 处理普通聊天响应
-function handleChatResponse(data, intentAnalysis) {
-    const chatResponse = data.chat_response;
-    
-    let message = `<div class="chat-response-container">
-        <div class="chat-response-header">
-            <i class="bi bi-chat-text"></i> <strong>AI助手回答</strong>`;
-    
-    // 显示意图分析信息
-    if (intentAnalysis) {
-        message += `<div class="intent-info">
-            <span class="intent-badge chat"><i class="bi bi-chat-dots"></i> 普通对话</span>
-            <span class="confidence-score">置信度: ${(intentAnalysis.confidence * 100).toFixed(1)}%</span>
-        </div>`;
-    }
-    
-    message += `</div>
-        <div class="chat-response-content">
-            ${escapeHtml(chatResponse).replace(/\n/g, '<br>')}
-        </div>
-    </div>`;
-    
-    addChatMessage('assistant', message);
-}
+// 传统聊天响应处理函数已移除，统一使用标准化消息格式
 
-// 处理知识库检索响应
-function handleKnowledgeSearchResponse(data, intentAnalysis) {
-    let message = `<div class="knowledge-search-container">
-        <div class="knowledge-search-header">
-            <i class="bi bi-search"></i> <strong>知识库检索结果</strong>`;
-    
-    // 显示意图分析信息
-    if (intentAnalysis) {
-        message += `<div class="intent-info">
-            <span class="intent-badge search"><i class="bi bi-database"></i> 知识库检索</span>
-            <span class="confidence-score">置信度: ${(intentAnalysis.confidence * 100).toFixed(1)}%</span>
-        </div>`;
-    }
-    
-    message += `</div>`;
-    
-    // 使用标准化消息组件渲染结果
-    addChatMessage('assistant', data);
-    
-    // 如果有文件结果，自动预览第一个文档
-    const legacyData = data.legacy_data;
-    if (legacyData && legacyData.file_results && legacyData.file_results.length > 0) {
-        const firstFile = legacyData.file_results[0];
-        const document = firstFile.document;
-        if (document) {
-            highlightDocumentInTree(document.id);
-            previewDocument(document);
-        }
-    }
-}
+// 传统知识库检索和MCP响应处理函数已移除，统一使用标准化消息格式
 
-// 处理MCP工具响应
-function handleMCPResponse(data, intentAnalysis) {
-    let message = `<div class="mcp-response-container">
-        <div class="mcp-response-header">
-            <i class="bi bi-tools"></i> <strong>操作执行结果</strong>`;
-    
-    // 显示意图分析信息
-    if (intentAnalysis) {
-        message += `<div class="intent-info">
-            <span class="intent-badge mcp"><i class="bi bi-gear-fill"></i> MCP操作</span>
-            <span class="confidence-score">置信度: ${(intentAnalysis.confidence * 100).toFixed(1)}%</span>
-        </div>`;
-    }
-    
-    message += `</div>`;
-    
-    // 添加MCP结果
-    const mcpMessage = formatMCPResults(data.mcp_results);
-    addChatMessage('assistant', mcpMessage);
-    
-    // 如果创建了文件夹，刷新文件树
-    const hasSuccessfulCreation = data.mcp_results.some(result => 
-        !result.error && result.tool_name && result.tool_name.includes('create')
-    );
-    
-    if (hasSuccessfulCreation) {
-        setTimeout(() => {
-            loadFileTree(); // 刷新文件树
-        }, 1000);
-    }
-}
+// 传统搜索结果处理函数已移除，统一使用标准化消息格式
 
-// 处理传统搜索结果（向后兼容）- 优化版本
-function handleLegacySearchResponse(data, intentAnalysis) {
-    // 收集所有需要显示的消息内容，然后一次性处理
-    const messagesToAdd = [];
-    
-    // 显示意图分析信息（如果有）
-    if (intentAnalysis && intentAnalysis.intent_type === 'knowledge_search') {
-        const intentMessage = `<div class="intent-analysis-info">
-            <span class="intent-badge search"><i class="bi bi-database"></i> 知识库检索</span>
-            <span class="confidence-score">置信度: ${(intentAnalysis.confidence * 100).toFixed(1)}%</span>
-        </div>`;
-        messagesToAdd.push(intentMessage);
-    }
-    
-    // 处理文件级别搜索结果
-    if (data.file_results) {
-        const fileMessage = formatFileSearchResults(data, data.query);
-        messagesToAdd.push(fileMessage);
-    }
-    
-    // 处理块级别搜索结果
-    if (data.results) {
-        const chunkMessage = formatSearchResults(data.results, data.query);
-        messagesToAdd.push(chunkMessage);
-    }
-    
-    // 如果有LLM答案
-    if (data.llm_answer) {
-        const llmMessage = formatLLMAnswer(data.llm_answer, data.llm_info);
-        messagesToAdd.push(llmMessage);
-    }
-    
-    // 批量添加消息，使用延迟确保DOM操作稳定
-    messagesToAdd.forEach((message, index) => {
-        setTimeout(() => {
-            addChatMessage('assistant', message);
-        }, index * 50); // 每个消息间隔50ms，避免冲突
-    });
-}
+// 传统格式化函数已移除，统一使用标准化消息格式和组件
 
-// 处理无结果响应
-function handleNoResultsResponse(query, similarityLevel) {
-    const suggestionMessage = generateSearchSuggestions(query, similarityLevel, 'semantic');
-    addChatMessage('assistant', suggestionMessage);
-}
-
-// LLM答案格式化函数
-function formatLLMAnswer(llmAnswer, llmInfo) {
-    let message = `<div class="llm-answer-container">
-        <div class="llm-answer-header">
-            <i class="bi bi-robot"></i> <strong>AI智能分析</strong>`;
-    
-    // 显示LLM处理状态
-    if (llmInfo) {
-        message += `<div class="llm-status">`;
-        if (llmInfo.query_optimized) {
-            message += `<span class="llm-status-item optimization"><i class="bi bi-lightbulb"></i> 查询优化</span>`;
-        }
-        if (llmInfo.reranked) {
-            message += `<span class="llm-status-item rerank"><i class="bi bi-sort-down"></i> 结果重排序</span>`;
-        }
-        if (llmInfo.used) {
-            message += `<span class="llm-status-item answer"><i class="bi bi-chat-square-text"></i> 智能答案</span>`;
-        }
-        if (llmInfo.model) {
-            message += `<span class="llm-status-item model"><i class="bi bi-cpu"></i> ${llmInfo.model}</span>`;
-        }
-        message += `</div>`;
-    }
-    
-    message += `</div>
-        <div class="llm-answer-content">
-            ${escapeHtml(llmAnswer).replace(/\n/g, '<br>')}
-        </div>
-    </div>`;
-    
-    return message;
-}
-
-// HTML转义函数
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-// MCP工具结果格式化函数
-function formatMCPResults(mcpResults) {
-    try {
-        // 确保mcpResults是数组
-        if (!Array.isArray(mcpResults)) {
-            console.warn('formatMCPResults: mcpResults is not an array:', mcpResults);
-            return '<div class="mcp-results-container"><div class="alert alert-warning">MCP结果格式异常</div></div>';
-        }
-        
-        let message = `<div class="mcp-results-container">
-            <div class="mcp-results-header">
-                <i class="bi bi-tools"></i> <strong>MCP工具执行结果</strong>
-                <div class="mcp-status">
-                    <span class="mcp-status-item tools"><i class="bi bi-gear"></i> ${mcpResults.length} 个工具执行</span>
-                </div>
-            </div>
-            <div class="mcp-results-content">`;
-        
-        mcpResults.forEach((result, index) => {
-            try {
-                // 安全检查result对象
-                if (!result || typeof result !== 'object') {
-                    console.warn('formatMCPResults: Invalid result at index', index, result);
-                    return;
-                }
-                
-                const isSuccess = !result.error;
-                const statusIcon = isSuccess ? 'bi-check-circle-fill text-success' : 'bi-x-circle-fill text-danger';
-                const statusText = isSuccess ? '成功' : '失败';
-                const toolName = result.tool_name || '未知工具';
-                
-                message += `
-                    <div class="mcp-tool-result ${isSuccess ? 'success' : 'error'}">
-                        <div class="tool-header">
-                            <i class="bi ${statusIcon}"></i>
-                            <strong>${escapeHtml(toolName)}</strong>
-                            <span class="tool-status">${statusText}</span>
-                        </div>`;
-                
-                if (result.arguments && typeof result.arguments === 'object' && Object.keys(result.arguments).length > 0) {
-                    try {
-                        const argumentsJson = JSON.stringify(result.arguments, null, 2);
-                        message += `<div class="tool-arguments">
-                            <small class="text-muted">参数：</small>
-                            <code>${escapeHtml(argumentsJson)}</code>
-                        </div>`;
-                    } catch (jsonError) {
-                        console.warn('formatMCPResults: Failed to stringify arguments:', jsonError);
-                        message += `<div class="tool-arguments">
-                            <small class="text-muted">参数：</small>
-                            <code>参数格式化失败</code>
-                        </div>`;
-                    }
-                }
-                
-                if (isSuccess && result.result) {
-                    message += `<div class="tool-result">
-                        <small class="text-muted">结果：</small>
-                        <div class="result-content">${escapeHtml(String(result.result))}</div>
-                    </div>`;
-                }
-                
-                if (!isSuccess && result.error) {
-                    message += `<div class="tool-error">
-                        <small class="text-danger">错误：</small>
-                        <div class="error-content">${escapeHtml(String(result.error))}</div>
-                    </div>`;
-                }
-                
-                message += `</div>`;
-            } catch (itemError) {
-                console.error('formatMCPResults: Error processing result item:', itemError, result);
-                message += `<div class="mcp-tool-result error">
-                    <div class="tool-header">
-                        <i class="bi bi-x-circle-fill text-danger"></i>
-                        <strong>处理错误</strong>
-                        <span class="tool-status">失败</span>
-                    </div>
-                    <div class="tool-error">
-                        <small class="text-danger">错误：</small>
-                        <div class="error-content">处理MCP结果时出现异常</div>
-                    </div>
-                </div>`;
-            }
-        });
-        
-        message += `</div></div>`;
-        return message;
-    } catch (error) {
-        console.error('formatMCPResults: Critical error:', error);
-        return `<div class="mcp-results-container">
-            <div class="alert alert-danger">
-                <i class="bi bi-exclamation-triangle"></i>
-                MCP结果显示异常：${escapeHtml(error.message)}
-            </div>
-        </div>`;
-    }
-}
-
-function formatFileSearchResults(data, query) {
-    // 检查是否是文档分析结果
-    if (data.is_analysis && data.analysis_result) {
-        return formatAnalysisResults(data);
-    }
-    
-    // 文件级别搜索结果格式化（支持超链接）
-    
-    const similarityLabels = {
-        'high': '高相关性 (≥60%)',
-        'medium': '中等相关性 (≥30%)', 
-        'low': '低相关性 (≥10%)',
-        'any': '显示所有结果'
-    };
-    
-    const levelText = similarityLabels[data.similarity_level] || '中等相关性';
-    const searchType = data.search_type || 'semantic';
-    
-    let searchTypeText = '';
-    if (searchType === 'hybrid') {
-        searchTypeText = ` (智能混合搜索: ${data.semantic_count || 0}个语义 + ${data.keyword_count || 0}个关键词)`;
-    }
-    
-    // 显示查询优化信息
-    let optimizationInfo = '';
-    if (data.llm_info && data.llm_info.query_optimized && data.llm_info.original_query) {
-        optimizationInfo = `<div class="query-optimization-info">
-            <i class="bi bi-lightbulb text-warning"></i> 
-            <small>查询已优化：${escapeHtml(data.llm_info.original_query)} → ${escapeHtml(data.llm_info.optimized_query || query)}</small>
-        </div>`;
-    }
-    
-    // 兼容不同的搜索结果格式
-    let fileResults = [];
-    
-    if (data.file_results) {
-        // 混合搜索的文件级别结果
-        fileResults = data.file_results;
-    } else if (data.results && Array.isArray(data.results)) {
-        // 语义搜索的结果，需要转换为文件级别格式
-        const documentMap = {};
-        
-        // 按文档ID分组结果
-        data.results.forEach(result => {
-            const docId = result.document ? result.document.id : result.id;
-            if (!documentMap[docId]) {
-                documentMap[docId] = {
-                    document: result.document || result,
-                    score: result.score || 0,
-                    chunks: [],
-                    chunk_count: 0,
-                    search_type: 'semantic'
-                };
-            }
-            
-            // 添加分块信息
-            if (result.text) {
-                documentMap[docId].chunks.push({
-                    text: result.text,
-                    chunk_index: result.chunk_index || 0,
-                    score: result.score || 0
-                });
-                documentMap[docId].chunk_count++;
-            }
-            
-            // 保持最高分数
-            if (result.score > documentMap[docId].score) {
-                documentMap[docId].score = result.score;
-            }
-        });
-        
-        fileResults = Object.values(documentMap);
-    }
-    
-    const resultCount = data.total_files || data.total_results || fileResults.length;
-    
-    // 如果没有搜索结果，返回空字符串
-    if (fileResults.length === 0) {
-        return '';
-    }
-    
-    let message = optimizationInfo + `📁 找到了 ${resultCount} 个相关文件 (${levelText})${searchTypeText}：\n\n`;
-    
-    fileResults.forEach((fileResult, index) => {
-        const document = fileResult.document;
-        const score = (fileResult.score * 100).toFixed(1);
-        
-        // 确定搜索类型图标
-        const searchTypes = fileResult.search_types || [fileResult.search_type] || ['semantic'];
-        const searchIcon = searchTypes.includes('hybrid') ? '🧠' : 
-                          searchTypes.includes('keyword') ? '🔤' : '🎯';
-        
-        // 显示重排序标记
-        let rerankMark = '';
-        if (data.llm_info && data.llm_info.reranked) {
-            rerankMark = ' <span class="rerank-indicator">🔄</span>';
-        }
-        
-        // 创建可点击的文件链接
-        const fileName = escapeHtml(document.name);
-        const fileLink = `<a href="#" class="file-link" onclick="selectFileFromChat(${document.id}); return false;" title="点击定位并预览文件">${fileName}</a>`;
-        
-        message += `${index + 1}. ${searchIcon} **${fileLink}** (${score}%)${rerankMark}\n`;
-        
-        // 显示文件信息
-        if (document.file_type) {
-            message += `   📄 类型: ${document.file_type.toUpperCase()}`;
-        }
-        if (fileResult.chunk_count) {
-            message += ` | 📊 匹配片段: ${fileResult.chunk_count}个`;
-        }
-        message += `\n`;
-        
-        // 显示匹配的内容预览
-        if (fileResult.chunks && fileResult.chunks.length > 0) {
-            const topChunk = fileResult.chunks[0];
-            let displayText = topChunk.text ? topChunk.text.substring(0, 100) : '';
-            
-            // 高亮匹配的关键词（如果有）
-            if (topChunk.matched_keywords && topChunk.matched_keywords.length > 0) {
-                topChunk.matched_keywords.forEach(keyword => {
-                    const regex = new RegExp(`(${keyword})`, 'gi');
-                    displayText = displayText.replace(regex, '**$1**');
-                });
-            }
-            
-            message += `   💬 内容摘要: ${displayText}...\n`;
-        }
-        
-        message += `\n`;
-    });
-    
-    message += `✨ 提示：点击文件名可自动定位到文档树并预览内容。`;
-    if (data.similarity_level !== 'any') {
-        message += `<br>💡 如需更多结果，可降低相关性要求后重新搜索。`;
-    }
-    
-    return message.replace(/\n/g, '<br>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-}
-
-function formatSearchResultsEnhanced(data, query) {
-    // 兼容旧版本的搜索结果格式化（向后兼容）
-    return formatFileSearchResults(data, query);
-}
-
-function generateSearchSuggestions(query, similarityLevel, searchStrategy) {
-    // 生成搜索建议
-    
-    const similarityLabels = {
-        'high': '高相关性',
-        'medium': '中等相关性', 
-        'low': '低相关性',
-        'any': '所有结果'
-    };
-    
-    const levelText = similarityLabels[similarityLevel] || '中等相关性';
-    const strategyText = searchStrategy === 'hybrid' ? '智能混合搜索' : '语义搜索';
-    
-    let suggestions = `🤔 在${levelText}(${strategyText})要求下，没有找到相关的文档内容。\n\n`;
-    
-    suggestions += `**优化建议：**\n`;
-    
-    if (similarityLevel === 'high') {
-        suggestions += `1. 🎯 降低相关性要求（选择"中等"或"低相关性"）\n`;
-    }
-    
-    if (query.length <= 4) {
-        suggestions += `2. 📝 尝试使用更完整的词汇或短语\n`;
-        suggestions += `3. 🔤 添加相关的上下文词汇\n`;
-    }
-    
-    if (searchStrategy === 'semantic') {
-        suggestions += `4. 🧠 系统已自动尝试智能搜索，如仍无结果可能文档未向量化\n`;
-    }
-    
-    suggestions += `5. 📚 检查是否有相关文档已上传并向量化\n`;
-    suggestions += `6. 🔄 尝试使用同义词或相关术语重新搜索\n`;
-    
-    // 根据查询内容给出具体建议
-    if (/[A-Z]{2,}/.test(query)) {
-        suggestions += `\n💡 **专业术语提示：** 检测到您搜索的是专业缩写，建议：\n`;
-        suggestions += `- 尝试搜索完整术语名称\n`;
-        suggestions += `- 添加相关描述词汇\n`;
-    }
-    
-    return suggestions.replace(/\n/g, '<br>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-}
+// 传统文件搜索格式化函数已移除，统一使用标准化消息格式
 
 // 添加消息计数器确保ID唯一性
 let messageCounter = 0;
@@ -4250,9 +3807,18 @@ function getLLMConfig() {
 }
 
 // 从聊天中选择文件的处理函数
+// 将selectFileFromChat函数暴露到全局作用域，供消息组件调用
+window.selectFileFromChat = selectFileFromChat;
+
 async function selectFileFromChat(docId) {
     try {
         console.log(`开始选择文件，文档ID: ${docId}`);
+        
+        // 0. 首先确保预览面板是打开的
+        if (!isPreviewPanelVisible()) {
+            console.log('预览面板未打开，正在打开...');
+            openPreviewPanel();
+        }
         
         // 1. 首先尝试从当前nodeMap中查找
         let node = findNodeById(docId);

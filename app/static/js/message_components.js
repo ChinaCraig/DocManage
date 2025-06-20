@@ -239,7 +239,63 @@ class MessageRenderer {
                 // 跳过操作列的数据
                 if (!operationColumnIndexes.includes(index)) {
                     const td = document.createElement('td');
-                    td.textContent = cellData;
+                    
+                    // 检查是否是文件名链接对象 - 更严格的验证
+                    if (cellData && 
+                        typeof cellData === 'object' && 
+                        !Array.isArray(cellData) &&
+                        cellData.hasOwnProperty('text') && 
+                        cellData.hasOwnProperty('document_id') &&
+                        cellData.text && 
+                        (cellData.document_id !== null && cellData.document_id !== undefined)) {
+                        
+                        // 创建可点击的文件名链接
+                        const fileLink = document.createElement('a');
+                        fileLink.href = '#';
+                        fileLink.className = 'file-name-link';
+                        fileLink.textContent = cellData.text;
+                        fileLink.title = '点击定位并预览文件';
+                        fileLink.style.color = '#007bff';
+                        fileLink.style.textDecoration = 'none';
+                        fileLink.style.cursor = 'pointer';
+                        
+                        // 添加点击事件
+                        fileLink.onclick = function(e) {
+                            e.preventDefault();
+                            // 调用全局的selectFileFromChat函数
+                            if (window.selectFileFromChat) {
+                                window.selectFileFromChat(cellData.document_id);
+                            }
+                            return false;
+                        };
+                        
+                        // 添加悬停效果
+                        fileLink.onmouseover = function() {
+                            this.style.textDecoration = 'underline';
+                        };
+                        fileLink.onmouseout = function() {
+                            this.style.textDecoration = 'none';
+                        };
+                        
+                        td.appendChild(fileLink);
+                    } else {
+                        // 普通文本内容 - 确保正确处理各种数据类型
+                        let displayText = '';
+                        if (cellData === null || cellData === undefined) {
+                            displayText = '';
+                        } else if (typeof cellData === 'object') {
+                            // 如果是对象但不是文件链接对象，尝试转换为有意义的文本
+                            if (Array.isArray(cellData)) {
+                                displayText = cellData.join(', ');
+                            } else {
+                                displayText = cellData.toString();
+                            }
+                        } else {
+                            displayText = String(cellData);
+                        }
+                        td.textContent = displayText;
+                    }
+                    
                     row.appendChild(td);
                 }
             });

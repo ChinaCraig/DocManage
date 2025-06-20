@@ -442,6 +442,7 @@ def semantic_search():
                                 'chunk_id': result.get('chunk_id', ''),
                                 'text': result.get('text', ''),
                                 'score': result.get('score', 0),
+                                'search_type': 'semantic',  # 添加搜索类型标识
                                 'document': {
                                     'id': document.id,
                                     'name': document.name,
@@ -589,7 +590,7 @@ def semantic_search():
         # 4. 添加搜索结果表格（如果有文件结果）
         if file_results:
             # 构建搜索结果表格
-            table_headers = ["文档", "相关度", "搜索类型", "内容预览", "操作"]
+            table_headers = ["文档", "相关度", "搜索类型", "内容预览"]
             table_rows = []
             
             for file_result in file_results[:5]:  # 限制显示前5个结果
@@ -607,12 +608,17 @@ def semantic_search():
                 chunks = file_result.get('chunks', [])
                 content_preview = chunks[0].get('text', '')[:100] + "..." if chunks else "无预览"
                 
+                # 创建可点击的文件名（带文档ID用于前端点击处理）
+                file_name_with_link = {
+                    "text": document.get('name', '未知文档'),
+                    "document_id": document.get('id')
+                }
+                
                 table_rows.append([
-                    document.get('name', '未知文档'),
+                    file_name_with_link,
                     score_display,
                     search_type_display,
-                    content_preview,
-                    "📄 预览"
+                    content_preview
                 ])
             
             if table_rows:
@@ -623,20 +629,6 @@ def semantic_search():
                         "rows": table_rows
                     }
                 })
-        
-        # 5. 添加文件链接（如果有搜索结果）
-        if file_results:
-            for file_result in file_results[:3]:  # 前3个文件添加链接
-                document = file_result.get('document', {})
-                if document.get('id'):
-                    message_content.append({
-                        "type": "file_link",
-                        "data": {
-                            "url": f"/api/documents/{document.get('id')}/preview",
-                            "filename": document.get('name', '未知文档'),
-                            "description": f"查看文档: {document.get('name', '未知文档')}"
-                        }
-                    })
         
         # 6. 如果没有找到结果，添加建议
         if not file_results and not mcp_tool_results:
@@ -1175,7 +1167,7 @@ def hybrid_search():
         # 4. 添加搜索结果表格（如果有文件结果）
         if file_results:
             # 构建搜索结果表格
-            table_headers = ["文档", "相关度", "搜索类型", "内容预览", "操作"]
+            table_headers = ["文档", "相关度", "搜索类型", "内容预览"]
             table_rows = []
             
             for file_result in file_results[:5]:  # 限制显示前5个结果
@@ -1193,12 +1185,17 @@ def hybrid_search():
                 chunks = file_result.get('chunks', [])
                 content_preview = chunks[0].get('text', '')[:100] + "..." if chunks else "无预览"
                 
+                # 创建可点击的文件名（带文档ID用于前端点击处理）
+                file_name_with_link = {
+                    "text": document.get('name', '未知文档'),
+                    "document_id": document.get('id')
+                }
+                
                 table_rows.append([
-                    document.get('name', '未知文档'),
+                    file_name_with_link,
                     score_display,
                     search_type_display,
-                    content_preview,
-                    "📄 预览"
+                    content_preview
                 ])
             
             if table_rows:
@@ -1209,20 +1206,6 @@ def hybrid_search():
                         "rows": table_rows
                     }
                 })
-        
-        # 5. 添加文件链接（如果有搜索结果）
-        if file_results:
-            for file_result in file_results[:3]:  # 前3个文件添加链接
-                document = file_result.get('document', {})
-                if document.get('id'):
-                    message_content.append({
-                        "type": "file_link",
-                        "data": {
-                            "url": f"/api/documents/{document.get('id')}/preview",
-                            "filename": document.get('name', '未知文档'),
-                            "description": f"查看文档: {document.get('name', '未知文档')}"
-                        }
-                    })
         
         # 6. 如果没有找到结果，添加建议
         if not file_results and not mcp_tool_results:

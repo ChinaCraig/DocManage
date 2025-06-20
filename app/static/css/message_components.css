@@ -897,3 +897,57 @@
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
 }
+
+.content-table tbody tr:last-child td:last-child {
+    border-bottom-right-radius: 8px;
+}
+
+/* 表格中的文件名链接样式 */
+.file-name-link {
+    color: #007bff !important;
+    text-decoration: none !important;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    background: rgba(0, 123, 255, 0.05);
+    border: 1px solid rgba(0, 123, 255, 0.1);
+}
+
+.file-name-link::before {
+    content: '📄';
+    font-size: 1rem;
+    opacity: 0.8;
+}
+
+.file-name-link:hover {
+    color: #0056b3 !important;
+    text-decoration: underline !important;
+    background: rgba(0, 123, 255, 0.1);
+    border-color: rgba(0, 123, 255, 0.2);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 123, 255, 0.2);
+}
+
+.file-name-link:hover::before {
+    content: '📂';
+    opacity: 1;
+}
+
+.file-name-link:active {
+    transform: translateY(0);
+    box-shadow: 0 1px 4px rgba(0, 123, 255, 0.3);
+}
+
+/* 表格单元格中的文件名链接特殊样式 */
+.content-table td .file-name-link {
+    margin: -0.25rem -0.5rem;
+    padding: 0.5rem 0.75rem;
+    width: calc(100% + 1rem);
+    justify-content: flex-start;
+}
