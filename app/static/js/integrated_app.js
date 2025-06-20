@@ -2267,11 +2267,68 @@ async function previewDocument(node) {
             // 对于Excel文档，默认显示数据预览，提供原文件下载选项
             response = await fetch(`/api/preview/excel/${node.id}`);
         } else if (['image', 'jpg', 'jpeg', 'png', 'gif', 'bmp'].includes(fileType)) {
-            // 对于图片，直接显示
+            // 对于图片，显示带缩放功能的图片查看器
             previewContent.innerHTML = `
-                <div class="text-center" style="flex: 1; margin-bottom: 15px;">
-                    <img src="/api/preview/image/${node.id}" class="img-fluid" alt="${node.name}" 
-                         style="max-height: 350px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+                <div class="image-viewer-container" style="flex: 1; margin-bottom: 15px;">
+                    <div class="image-viewer-toolbar mb-3">
+                        <div class="btn-group" role="group" aria-label="图片操作">
+                            <button class="btn btn-sm btn-outline-secondary" onclick="zoomIn()" title="放大">
+                                <i class="bi bi-zoom-in"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="zoomOut()" title="缩小">
+                                <i class="bi bi-zoom-out"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="resetZoom()" title="重置">
+                                <i class="bi bi-arrow-clockwise"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="fitToWindow()" title="适应窗口">
+                                <i class="bi bi-arrows-fullscreen"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="rotateImage()" title="旋转">
+                                <i class="bi bi-arrow-clockwise"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="toggleFullscreen()" title="全屏">
+                                <i class="bi bi-fullscreen"></i>
+                            </button>
+                        </div>
+                        <div class="zoom-info">
+                            <span id="zoomLevel">100%</span>
+                        </div>
+                    </div>
+                    <div class="image-container" id="imageContainer" style="
+                        position: relative; 
+                        overflow: auto; 
+                        height: 450px; 
+                        border: 1px solid #dee2e6; 
+                        border-radius: 8px; 
+                        background: #f8f9fa url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAKklEQVQoU2NkYGAwZkAD////RxdiYBwFoyDUZwUMDAwMjCC4TQiMJ8wDALrRHRZjQQOlAAAAAElFTkSuQmCC') repeat;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        cursor: grab;
+                    ">
+                        <div class="keyboard-shortcuts">
+                            <div><strong>快捷键:</strong></div>
+                            <div>+ / - : 缩放</div>
+                            <div>0 : 重置</div>
+                            <div>R : 旋转</div>
+                            <div>F : 全屏</div>
+                            <div>双击 : 重置</div>
+                        </div>
+                        <img id="previewImage" 
+                             src="/api/preview/image/${node.id}" 
+                             alt="${node.name}" 
+                             style="
+                                max-width: none;
+                                max-height: none;
+                                transform-origin: center center;
+                                transition: transform 0.2s ease;
+                                cursor: grab;
+                             "
+                             onload="initImageViewer(this)"
+                             ondragstart="return false"
+                             oncontextmenu="return false">
+                    </div>
                 </div>
                 <div class="document-info-section">
                     ${generateDocumentInfo(node)}
@@ -5405,5 +5462,425 @@ function restoreChatState() {
 // 保存聊天状态
 function saveChatState() {
     localStorage.setItem('isChatStarted', isChatStarted.toString());
+}
+
+// ============ 图片查看器功能 ============
+
+// 图片查看器全局变量
+let imageViewerState = {
+    zoom: 1,
+    rotation: 0,
+    isDragging: false,
+    dragStart: { x: 0, y: 0 },
+    dragOffset: { x: 0, y: 0 },
+    maxZoom: 10,
+    minZoom: 0.1,
+    isFullscreen: false,
+    originalWidth: 0,
+    originalHeight: 0
+};
+
+/**
+ * 初始化图片查看器
+ */
+function initImageViewer(img) {
+    // 重置状态
+    imageViewerState.zoom = 1;
+    imageViewerState.rotation = 0;
+    imageViewerState.dragOffset = { x: 0, y: 0 };
+    imageViewerState.originalWidth = img.naturalWidth;
+    imageViewerState.originalHeight = img.naturalHeight;
+    
+    // 设置初始适应窗口大小
+    fitToWindow();
+    
+    // 绑定事件
+    setupImageViewerEvents(img);
+    
+    console.log('图片查看器初始化完成', {
+        naturalWidth: img.naturalWidth,
+        naturalHeight: img.naturalHeight
+    });
+}
+
+/**
+ * 设置图片查看器事件
+ */
+function setupImageViewerEvents(img) {
+    const container = document.getElementById('imageContainer');
+    
+    // 清理之前的事件监听器（如果有的话）
+    cleanupImageViewerEvents();
+    
+    // 鼠标拖拽事件 - 只在图片上绑定mousedown
+    img.addEventListener('mousedown', startDrag);
+    
+    // 鼠标滚轮缩放
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    
+    // 键盘快捷键
+    document.addEventListener('keydown', handleKeyboard);
+    
+    // 双击重置
+    img.addEventListener('dblclick', resetZoom);
+    
+    // 阻止默认的图片拖拽行为
+    img.addEventListener('dragstart', e => e.preventDefault());
+    
+    // 右键菜单禁用
+    img.addEventListener('contextmenu', e => e.preventDefault());
+}
+
+/**
+ * 清理图片查看器事件
+ */
+function cleanupImageViewerEvents() {
+    // 移除可能残留的document级别事件
+    document.removeEventListener('mousemove', drag);
+    document.removeEventListener('mouseup', endDrag);
+}
+
+/**
+ * 放大图片
+ */
+function zoomIn() {
+    const newZoom = Math.min(imageViewerState.zoom * 1.2, imageViewerState.maxZoom);
+    setZoom(newZoom);
+}
+
+/**
+ * 缩小图片
+ */
+function zoomOut() {
+    const newZoom = Math.max(imageViewerState.zoom / 1.2, imageViewerState.minZoom);
+    setZoom(newZoom);
+}
+
+/**
+ * 设置缩放级别
+ */
+function setZoom(zoom) {
+    imageViewerState.zoom = zoom;
+    updateImageTransform();
+    updateZoomDisplay();
+}
+
+/**
+ * 重置缩放
+ */
+function resetZoom() {
+    imageViewerState.zoom = 1;
+    imageViewerState.rotation = 0;
+    imageViewerState.dragOffset = { x: 0, y: 0 };
+    updateImageTransform();
+    updateZoomDisplay();
+    
+    // 居中显示
+    centerImage();
+}
+
+/**
+ * 适应窗口
+ */
+function fitToWindow() {
+    const img = document.getElementById('previewImage');
+    const container = document.getElementById('imageContainer');
+    
+    if (!img || !container) return;
+    
+    const containerRect = container.getBoundingClientRect();
+    const containerWidth = containerRect.width - 40; // 留些边距
+    const containerHeight = containerRect.height - 40;
+    
+    const imgWidth = imageViewerState.originalWidth || img.naturalWidth;
+    const imgHeight = imageViewerState.originalHeight || img.naturalHeight;
+    
+    if (imgWidth === 0 || imgHeight === 0) return;
+    
+    const scaleX = containerWidth / imgWidth;
+    const scaleY = containerHeight / imgHeight;
+    const scale = Math.min(scaleX, scaleY, 1); // 不超过原始大小
+    
+    imageViewerState.zoom = scale;
+    imageViewerState.dragOffset = { x: 0, y: 0 };
+    
+    updateImageTransform();
+    updateZoomDisplay();
+    centerImage();
+}
+
+/**
+ * 旋转图片
+ */
+function rotateImage() {
+    imageViewerState.rotation = (imageViewerState.rotation + 90) % 360;
+    updateImageTransform();
+}
+
+/**
+ * 更新图片变换
+ */
+function updateImageTransform() {
+    const img = document.getElementById('previewImage');
+    if (!img) return;
+    
+    const { zoom, rotation, dragOffset } = imageViewerState;
+    
+    img.style.transform = `translate(${dragOffset.x}px, ${dragOffset.y}px) scale(${zoom}) rotate(${rotation}deg)`;
+    
+    // 更新光标样式 - 始终显示可拖拽的光标
+    img.style.cursor = imageViewerState.isDragging ? 'grabbing' : 'grab';
+}
+
+/**
+ * 更新缩放显示
+ */
+function updateZoomDisplay() {
+    const zoomElement = document.getElementById('zoomLevel');
+    if (zoomElement) {
+        zoomElement.textContent = Math.round(imageViewerState.zoom * 100) + '%';
+    }
+}
+
+/**
+ * 居中图片
+ */
+function centerImage() {
+    const container = document.getElementById('imageContainer');
+    const img = document.getElementById('previewImage');
+    
+    if (!container || !img) return;
+    
+    // 滚动到中心
+    const containerRect = container.getBoundingClientRect();
+    const imgRect = img.getBoundingClientRect();
+    
+    const scrollLeft = (imgRect.width - containerRect.width) / 2;
+    const scrollTop = (imgRect.height - containerRect.height) / 2;
+    
+    container.scrollLeft = Math.max(0, scrollLeft);
+    container.scrollTop = Math.max(0, scrollTop);
+}
+
+/**
+ * 开始拖拽
+ */
+function startDrag(e) {
+    console.log('开始拖拽', e.clientX, e.clientY);
+    
+    // 任何时候都可以拖拽
+    imageViewerState.isDragging = true;
+    imageViewerState.dragStart = { x: e.clientX, y: e.clientY };
+    
+    const img = e.target;
+    img.style.cursor = 'grabbing';
+    
+    // 添加document级别的事件监听，确保拖拽不会丢失
+    document.addEventListener('mousemove', drag, { passive: false });
+    document.addEventListener('mouseup', endDrag, { passive: false });
+    
+    e.preventDefault();
+    e.stopPropagation();
+}
+
+/**
+ * 拖拽中
+ */
+function drag(e) {
+    if (!imageViewerState.isDragging) return;
+    
+    const deltaX = e.clientX - imageViewerState.dragStart.x;
+    const deltaY = e.clientY - imageViewerState.dragStart.y;
+    
+    console.log('拖拽移动', deltaX, deltaY, '总偏移', imageViewerState.dragOffset);
+    
+    imageViewerState.dragOffset.x += deltaX;
+    imageViewerState.dragOffset.y += deltaY;
+    
+    imageViewerState.dragStart = { x: e.clientX, y: e.clientY };
+    
+    updateImageTransform();
+    
+    e.preventDefault();
+    e.stopPropagation();
+}
+
+/**
+ * 结束拖拽
+ */
+function endDrag(e) {
+    if (!imageViewerState.isDragging) return;
+    
+    imageViewerState.isDragging = false;
+    
+    const img = document.getElementById('previewImage');
+    if (img) {
+        img.style.cursor = 'grab';
+    }
+    
+    // 移除document级别的事件监听
+    document.removeEventListener('mousemove', drag);
+    document.removeEventListener('mouseup', endDrag);
+    
+    e.preventDefault();
+    e.stopPropagation();
+}
+
+/**
+ * 处理滚轮事件
+ */
+function handleWheel(e) {
+    e.preventDefault();
+    
+    const delta = e.deltaY > 0 ? -1 : 1;
+    const zoomFactor = 1.1;
+    
+    let newZoom;
+    if (delta > 0) {
+        newZoom = Math.min(imageViewerState.zoom * zoomFactor, imageViewerState.maxZoom);
+    } else {
+        newZoom = Math.max(imageViewerState.zoom / zoomFactor, imageViewerState.minZoom);
+    }
+    
+    // 以鼠标位置为中心缩放
+    const container = document.getElementById('imageContainer');
+    const containerRect = container.getBoundingClientRect();
+    const mouseX = e.clientX - containerRect.left;
+    const mouseY = e.clientY - containerRect.top;
+    
+    // 计算缩放后的偏移调整
+    const zoomChange = newZoom / imageViewerState.zoom;
+    const centerX = containerRect.width / 2;
+    const centerY = containerRect.height / 2;
+    
+    imageViewerState.dragOffset.x = centerX + (imageViewerState.dragOffset.x + centerX - mouseX) * zoomChange - centerX;
+    imageViewerState.dragOffset.y = centerY + (imageViewerState.dragOffset.y + centerY - mouseY) * zoomChange - centerY;
+    
+    setZoom(newZoom);
+}
+
+/**
+ * 处理键盘快捷键
+ */
+function handleKeyboard(e) {
+    // 只在图片预览时响应
+    if (!document.getElementById('previewImage')) return;
+    
+    switch(e.key) {
+        case '+':
+        case '=':
+            e.preventDefault();
+            zoomIn();
+            break;
+        case '-':
+            e.preventDefault();
+            zoomOut();
+            break;
+        case '0':
+            e.preventDefault();
+            resetZoom();
+            break;
+        case 'r':
+        case 'R':
+            e.preventDefault();
+            rotateImage();
+            break;
+        case 'f':
+        case 'F':
+            if (e.ctrlKey || e.metaKey) {
+                e.preventDefault();
+                toggleFullscreen();
+            }
+            break;
+        case 'Escape':
+            if (imageViewerState.isFullscreen) {
+                e.preventDefault();
+                toggleFullscreen();
+            }
+            break;
+    }
+}
+
+/**
+ * 切换全屏模式
+ */
+function toggleFullscreen() {
+    const container = document.getElementById('imageContainer');
+    if (!container) return;
+    
+    if (!imageViewerState.isFullscreen) {
+        // 进入全屏
+        if (container.requestFullscreen) {
+            container.requestFullscreen();
+        } else if (container.webkitRequestFullscreen) {
+            container.webkitRequestFullscreen();
+        } else if (container.msRequestFullscreen) {
+            container.msRequestFullscreen();
+        }
+        
+        // 添加全屏样式
+        container.style.position = 'fixed';
+        container.style.top = '0';
+        container.style.left = '0';
+        container.style.width = '100vw';
+        container.style.height = '100vh';
+        container.style.zIndex = '9999';
+        container.style.backgroundColor = '#000';
+        
+        imageViewerState.isFullscreen = true;
+        
+        // 更新按钮图标
+        const fullscreenBtn = document.querySelector('[onclick="toggleFullscreen()"] i');
+        if (fullscreenBtn) {
+            fullscreenBtn.className = 'bi bi-fullscreen-exit';
+        }
+        
+        // 自动适应全屏窗口
+        setTimeout(fitToWindow, 100);
+        
+    } else {
+        // 退出全屏
+        if (document.exitFullscreen) {
+            document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+            document.webkitExitFullscreen();
+        } else if (document.msExitFullscreen) {
+            document.msExitFullscreen();
+        }
+        
+        // 移除全屏样式
+        container.style.position = '';
+        container.style.top = '';
+        container.style.left = '';
+        container.style.width = '';
+        container.style.height = '450px';
+        container.style.zIndex = '';
+        container.style.backgroundColor = '';
+        
+        imageViewerState.isFullscreen = false;
+        
+        // 更新按钮图标
+        const fullscreenBtn = document.querySelector('[onclick="toggleFullscreen()"] i');
+        if (fullscreenBtn) {
+            fullscreenBtn.className = 'bi bi-fullscreen';
+        }
+        
+        // 重新适应原窗口
+        setTimeout(fitToWindow, 100);
+    }
+}
+
+// 监听全屏变化事件
+document.addEventListener('fullscreenchange', handleFullscreenChange);
+document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+document.addEventListener('msfullscreenchange', handleFullscreenChange);
+
+function handleFullscreenChange() {
+    const isFullscreen = !!(document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement);
+    
+    if (!isFullscreen && imageViewerState.isFullscreen) {
+        // 用户通过ESC键退出全屏
+        toggleFullscreen();
+    }
 }
 
