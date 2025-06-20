@@ -279,12 +279,16 @@ async function showVectorization(docId) {
     const documentPreviewPanel = document.getElementById('documentPreviewPanel');
     const vectorizationPanel = document.getElementById('vectorizationPanel');
     const vectorizeBtn = document.getElementById('vectorizeBtn');
+    const previewSection = document.getElementById('previewSection');
+    const vectorizationResizer = document.getElementById('vectorizationResizer');
     
-    // 预览面板收缩到50%
+    // 激活向量化模式
     documentPreviewPanel.classList.add('vectorization-active');
+    previewSection.classList.add('vectorization-mode');
     
-    // 显示向量化面板
+    // 显示向量化面板和分隔器
     vectorizationPanel.classList.add('active');
+    vectorizationResizer.style.display = 'block';
     
     // 更新向量化按钮状态
     vectorizeBtn.classList.add('active');
@@ -301,6 +305,14 @@ async function showVectorization(docId) {
     // 存储当前文档ID
     vectorizationPanel.dataset.currentDocId = docId;
     
+    // 初始化拖拽分隔器
+    initVectorizationResizer();
+    
+    // 恢复用户面板大小偏好
+    setTimeout(() => {
+        restoreVectorizationPanelPreference();
+    }, 50);
+    
     // 加载向量化信息
     await loadVectorizationInfo(docId);
 }
@@ -312,17 +324,37 @@ function closeVectorization() {
     const documentPreviewPanel = document.getElementById('documentPreviewPanel');
     const vectorizationPanel = document.getElementById('vectorizationPanel');
     const vectorizeBtn = document.getElementById('vectorizeBtn');
+    const previewSection = document.getElementById('previewSection');
+    const vectorizationResizer = document.getElementById('vectorizationResizer');
     
     // 恢复预览面板原始宽度
     documentPreviewPanel.classList.remove('vectorization-active');
+    previewSection.classList.remove('vectorization-mode');
     
-    // 隐藏向量化面板
+    // 重置面板宽度为默认的CSS样式 - 清除所有强制设置的样式
+    documentPreviewPanel.style.removeProperty('flex-basis');
+    documentPreviewPanel.style.removeProperty('flex-grow');
+    documentPreviewPanel.style.removeProperty('flex-shrink');
+    documentPreviewPanel.style.removeProperty('width');
+    documentPreviewPanel.style.flex = '';  // 重置为CSS默认值
+    
+    vectorizationPanel.style.removeProperty('flex-basis');
+    vectorizationPanel.style.removeProperty('flex-grow');
+    vectorizationPanel.style.removeProperty('flex-shrink');
+    vectorizationPanel.style.removeProperty('width');
+    vectorizationPanel.style.flex = '';    // 重置为CSS默认值
+    
+    // 隐藏向量化面板和分隔器
     vectorizationPanel.classList.remove('active');
+    vectorizationResizer.style.display = 'none';
     
     // 隐藏配置区域和操作按钮
     document.getElementById('vectorizationConfig').style.display = 'none';
     document.getElementById('vectorPanelFooter').style.display = 'none';
     document.getElementById('vectorEmptyState').style.display = 'block';
+    
+    // 清理拖拽事件监听器
+    cleanupVectorizationResizer();
     
     // 恢复向量化按钮状态
     if (vectorizeBtn) {
@@ -5497,6 +5529,11 @@ function initImageViewer(img) {
     // 绑定事件
     setupImageViewerEvents(img);
     
+    // 智能调整向量化面板布局（如果处于向量化模式）
+    setTimeout(() => {
+        adjustLayoutForImageViewer();
+    }, 100);
+    
     console.log('图片查看器初始化完成', {
         naturalWidth: img.naturalWidth,
         naturalHeight: img.naturalHeight
@@ -5882,5 +5919,246 @@ function handleFullscreenChange() {
         // 用户通过ESC键退出全屏
         toggleFullscreen();
     }
+}
+
+// ============ 向量化面板拖拽分隔器功能 ============
+
+let vectorizationResizerState = {
+    isResizing: false,
+    startX: 0,
+    startPreviewWidth: 0,
+    startVectorWidth: 0
+};
+
+/**
+ * 初始化向量化面板拖拽分隔器
+ */
+function initVectorizationResizer() {
+    const resizer = document.getElementById('vectorizationResizer');
+    if (!resizer) return;
+    
+    // 清理之前的事件监听器
+    cleanupVectorizationResizer();
+    
+    // 添加鼠标事件
+    resizer.addEventListener('mousedown', startVectorizationResize);
+    
+    console.log('向量化分隔器初始化完成');
+}
+
+/**
+ * 开始拖拽调整
+ */
+function startVectorizationResize(e) {
+    e.preventDefault();
+    
+    const previewPanel = document.getElementById('documentPreviewPanel');
+    const vectorPanel = document.getElementById('vectorizationPanel');
+    const resizer = document.getElementById('vectorizationResizer');
+    
+    if (!previewPanel || !vectorPanel || !resizer) return;
+    
+    vectorizationResizerState.isResizing = true;
+    vectorizationResizerState.startX = e.clientX;
+    
+    // 获取当前实际的面板宽度
+    const previewRect = previewPanel.getBoundingClientRect();
+    const vectorRect = vectorPanel.getBoundingClientRect();
+    vectorizationResizerState.startPreviewWidth = previewRect.width;
+    vectorizationResizerState.startVectorWidth = vectorRect.width;
+    
+    // 添加拖拽状态样式
+    resizer.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    
+    // 添加document级别的事件监听
+    document.addEventListener('mousemove', doVectorizationResize);
+    document.addEventListener('mouseup', stopVectorizationResize);
+    
+    console.log('开始向量化面板拖拽调整', {
+        startX: vectorizationResizerState.startX,
+        startPreviewWidth: vectorizationResizerState.startPreviewWidth,
+        startVectorWidth: vectorizationResizerState.startVectorWidth,
+        containerWidth: document.getElementById('previewSection').getBoundingClientRect().width
+    });
+}
+
+/**
+ * 执行拖拽调整
+ */
+function doVectorizationResize(e) {
+    if (!vectorizationResizerState.isResizing) return;
+    
+    e.preventDefault();
+    
+    const previewPanel = document.getElementById('documentPreviewPanel');
+    const vectorPanel = document.getElementById('vectorizationPanel');
+    const previewSection = document.getElementById('previewSection');
+    
+    if (!previewPanel || !vectorPanel || !previewSection) return;
+    
+    // 获取容器边界
+    const containerRect = previewSection.getBoundingClientRect();
+    const containerLeft = containerRect.left;
+    const containerWidth = containerRect.width;
+    
+    // 计算鼠标相对于容器左边的位置
+    const mouseX = e.clientX - containerLeft;
+    
+    // 设置最小宽度和分隔器宽度
+    const minPanelWidth = 250;
+    const resizerWidth = 6;
+    
+    // 计算预览面板宽度（鼠标左边的部分）
+    let previewWidth = mouseX - resizerWidth / 2;
+    
+    // 限制预览面板宽度
+    previewWidth = Math.max(minPanelWidth, previewWidth);
+    previewWidth = Math.min(previewWidth, containerWidth - minPanelWidth - resizerWidth);
+    
+    // 计算向量化面板宽度
+    let vectorWidth = containerWidth - previewWidth - resizerWidth;
+    
+    // 确保宽度有效
+    if (previewWidth < minPanelWidth || vectorWidth < minPanelWidth) {
+        console.log('容器太小，跳过调整');
+        return;
+    }
+    
+    // 应用样式 - 使用!important强制覆盖CSS样式
+    previewPanel.style.setProperty('flex-basis', `${previewWidth}px`, 'important');
+    previewPanel.style.setProperty('flex-grow', '0', 'important');
+    previewPanel.style.setProperty('flex-shrink', '0', 'important');
+    previewPanel.style.setProperty('width', `${previewWidth}px`, 'important');
+    
+    vectorPanel.style.setProperty('flex-basis', `${vectorWidth}px`, 'important');
+    vectorPanel.style.setProperty('flex-grow', '0', 'important');
+    vectorPanel.style.setProperty('flex-shrink', '0', 'important');
+    vectorPanel.style.setProperty('width', `${vectorWidth}px`, 'important');
+    
+    // 保存用户偏好
+    saveVectorizationPanelPreference(vectorWidth);
+    
+    console.log(`拖拽位置: 鼠标=${mouseX}px, 预览=${previewWidth}px, 向量=${vectorWidth}px, 总宽度=${containerWidth}px`);
+}
+
+/**
+ * 停止拖拽调整
+ */
+function stopVectorizationResize(e) {
+    if (!vectorizationResizerState.isResizing) return;
+    
+    vectorizationResizerState.isResizing = false;
+    
+    const resizer = document.getElementById('vectorizationResizer');
+    if (resizer) {
+        resizer.classList.remove('dragging');
+    }
+    
+    // 恢复样式
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    
+    // 移除document级别的事件监听
+    document.removeEventListener('mousemove', doVectorizationResize);
+    document.removeEventListener('mouseup', stopVectorizationResize);
+    
+    console.log('向量化面板拖拽调整结束');
+}
+
+/**
+ * 清理向量化分隔器事件监听器
+ */
+function cleanupVectorizationResizer() {
+    const resizer = document.getElementById('vectorizationResizer');
+    if (resizer) {
+        resizer.removeEventListener('mousedown', startVectorizationResize);
+        resizer.classList.remove('dragging');
+    }
+    
+    // 清理document级别的事件监听器
+    document.removeEventListener('mousemove', doVectorizationResize);
+    document.removeEventListener('mouseup', stopVectorizationResize);
+    
+    // 重置状态
+    vectorizationResizerState.isResizing = false;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+}
+
+/**
+ * 保存向量化面板宽度偏好
+ */
+function saveVectorizationPanelPreference(width) {
+    try {
+        localStorage.setItem('vectorization_panel_width', width.toString());
+    } catch (error) {
+        console.warn('无法保存向量化面板宽度偏好:', error);
+    }
+}
+
+/**
+ * 恢复向量化面板宽度偏好
+ */
+function restoreVectorizationPanelPreference() {
+    try {
+        const savedWidth = localStorage.getItem('vectorization_panel_width');
+        if (savedWidth) {
+            const width = parseInt(savedWidth);
+            if (width >= 250) {
+                const previewPanel = document.getElementById('documentPreviewPanel');
+                const vectorPanel = document.getElementById('vectorizationPanel');
+                const previewSection = document.getElementById('previewSection');
+                
+                if (previewPanel && vectorPanel && previewSection && vectorizationMode) {
+                    // 使用getBoundingClientRect获取准确的容器宽度
+                    const containerRect = previewSection.getBoundingClientRect();
+                    const containerWidth = containerRect.width;
+                    const resizerWidth = 6;
+                    const previewWidth = containerWidth - width - resizerWidth;
+                    
+                    // 确保宽度合理
+                    if (previewWidth >= 250 && width >= 250 && containerWidth > 500) {
+                        previewPanel.style.flex = `0 0 ${previewWidth}px`;
+                        vectorPanel.style.flex = `0 0 ${width}px`;
+                        console.log(`恢复面板偏好: 预览=${previewWidth}px, 向量=${width}px, 容器=${containerWidth}px`);
+                    }
+                }
+            }
+        }
+    } catch (error) {
+        console.warn('无法恢复向量化面板宽度偏好:', error);
+    }
+}
+
+/**
+ * 智能调整图片预览时的面板布局
+ */
+function adjustLayoutForImageViewer() {
+    if (!vectorizationMode) return;
+    
+    const previewImage = document.getElementById('previewImage');
+    if (!previewImage) return;
+    
+    const previewPanel = document.getElementById('documentPreviewPanel');
+    const vectorPanel = document.getElementById('vectorizationPanel');
+    const previewSection = document.getElementById('previewSection');
+    
+    if (!previewPanel || !vectorPanel || !previewSection) return;
+    
+    // 图片预览时，给予预览面板更多空间
+    const containerRect = previewSection.getBoundingClientRect();
+    const containerWidth = containerRect.width;
+    const resizerWidth = 6;
+    const idealVectorWidth = Math.min(350, containerWidth * 0.3); // 向量化面板理想宽度为容器的30%，最大350px
+    const previewWidth = containerWidth - idealVectorWidth - resizerWidth;
+    
+    if (previewWidth >= 250 && idealVectorWidth >= 250 && containerWidth > 500) { // 确保两个面板都有足够空间
+        previewPanel.style.flex = `0 0 ${previewWidth}px`;
+        vectorPanel.style.flex = `0 0 ${idealVectorWidth}px`;
+    }
+    
+    console.log('为图片预览调整了面板布局');
 }
 

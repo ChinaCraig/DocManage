@@ -687,13 +687,15 @@
 
         /* 当向量化信息显示时，预览面板收缩 */
         .document-preview-panel.vectorization-active {
-            flex: 0 0 50%;
-            margin-right: 15px;
+            flex: 1;
+            min-width: 300px;
+            margin-right: 0;
         }
 
         /* 向量化信息面板 */
         .vectorization-panel {
-            flex: 0 0 48%;
+            flex: 0 0 350px;
+            min-width: 250px;
             background: #fff;
             border-radius: 8px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
@@ -703,6 +705,64 @@
 
         .vectorization-panel.active {
             display: flex;
+        }
+
+        /* 向量化面板垂直分隔器 */
+        .vectorization-resizer {
+            width: 6px;
+            background: linear-gradient(to right, #f8f9fa 0%, #e9ecef 50%, #f8f9fa 100%);
+            cursor: col-resize;
+            border-left: 1px solid #dee2e6;
+            border-right: 1px solid #dee2e6;
+            position: relative;
+            user-select: none;
+            display: none;
+            flex-shrink: 0;
+            transition: all 0.2s ease;
+        }
+
+        .vectorization-resizer:hover {
+            background: linear-gradient(to right, #e9ecef 0%, #ced4da 50%, #e9ecef 100%);
+            border-color: #adb5bd;
+        }
+
+        .vectorization-resizer::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 2px;
+            height: 30px;
+            background: #6c757d;
+            border-radius: 1px;
+            opacity: 0.6;
+        }
+
+        .vectorization-resizer:hover::before {
+            opacity: 1;
+            background: #495057;
+        }
+
+        .vectorization-resizer.dragging {
+            background: linear-gradient(to right, #007bff 0%, #0056b3 50%, #007bff 100%);
+            border-color: #007bff;
+        }
+
+        .vectorization-resizer.dragging::before {
+            background: white;
+            opacity: 1;
+        }
+
+        /* 向量化模式下显示分隔器 */
+        .document-preview-panel.vectorization-active + .vectorization-resizer {
+            display: block;
+        }
+
+        /* 预览区域在向量化模式下的调整 */
+        .preview-section.vectorization-mode {
+            display: flex;
+            gap: 0;
         }
 
         /* 可拖拽分隔条 */
@@ -3003,6 +3063,9 @@
                                     </div>
                                 </div>
                             </div>
+
+                            <!-- 向量化面板垂直分隔器 -->
+                            <div class="vectorization-resizer" id="vectorizationResizer"></div>
 
                             <!-- 向量化信息面板（隐藏状态） -->
                             <div class="vectorization-panel" id="vectorizationPanel">
