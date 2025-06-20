@@ -1,0 +1,42 @@
+client:
+  default_timeout: 30
+  max_concurrent_requests: 10
+  retry_attempts: 3
+  retry_delay: 1.0
+servers:
+  brave-search:
+    args:
+    - '@modelcontextprotocol/server-brave-search'
+    command: npx
+    description: Brave搜索引擎
+    enabled: false
+    env:
+      BRAVE_API_KEY: your-api-key-here
+  document-management:
+    args:
+    - -m
+    - app.services.mcp.servers.document_server
+    command: python
+    description: 内置文档管理服务器
+    enabled: true
+    working_directory: .
+  filesystem:
+    args:
+    - '@modelcontextprotocol/server-filesystem'
+    - /tmp
+    command: npx
+    description: 本地文件系统操作
+    enabled: false
+  puppeteer:
+    args:
+    - /path/to/puppeteer-mcp-server/build/index.js
+    command: node
+    description: 浏览器自动化操作
+    enabled: false
+  sqlite:
+    args:
+    - '@modelcontextprotocol/server-sqlite'
+    - /path/to/database.db
+    command: npx
+    description: SQLite数据库操作
+    enabled: false

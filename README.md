@@ -127,11 +127,13 @@ DocManage/
 │   │   ├── search_routes.py     # 搜索API
 │   │   ├── upload_routes.py     # 上传API
 │   │   ├── vectorize_routes.py  # 向量化API
-│   │   └── mcp_routes.py        # MCP功能API
+│   │   └── mcp_v2_routes.py     # MCP v2功能API
 │   ├── services/                # 业务逻辑服务
 │   │   ├── vectorization/       # 向量化服务
 │   │   ├── llm_service.py       # LLM集成服务
-│   │   ├── mcp_service.py       # MCP服务
+│   │   ├── mcp/                 # 标准MCP服务
+│   │   ├── mcp_tool_analyzer.py # MCP工具分析器
+│   │   ├── mcp_tool_executor.py # MCP工具执行器
 │   │   └── preview/             # 预览服务
 │   └── static/                  # 前端资源
 │       ├── semantic_search.html # 主页面（集成界面）

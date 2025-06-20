@@ -178,71 +178,133 @@ def semantic_search():
                             'error': f"聊天处理失败: {str(chat_error)}"
                         }), 500
                 
-                elif intent_type == 'mcp_action' and confidence > confidence_threshold and intent_analysis.get('action_type') in ['create_file', 'create_folder']:
-                    # MCP调用：保持现有实现
-                    logger.info(f"执行MCP操作: {query_text}")
+                elif intent_type == 'mcp_action' and confidence > confidence_threshold:
+                    # MCP调用：使用标准MCP系统
+                    logger.info(f"执行标准MCP操作: {query_text}")
                     skip_search = True
                     
-                    # 使用简化的MCP服务执行操作
-                    from app.services.mcp_service_simple import simple_mcp_service
-                    
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    try:
-                        mcp_tool_results = loop.run_until_complete(
-                            simple_mcp_service.execute_tool_sequence(query_text)
-                        )
-                        logger.info(f"MCP工具执行完成，共 {len(mcp_tool_results)} 个步骤")
+                    # 步骤1：检查MCP开关状态
+                    mcp_enabled = request.json.get('enable_mcp', False)
+                    if not mcp_enabled:
+                        logger.warning("MCP功能已关闭")
                         
-                        # 构建MCP响应数据
-                        response_data = {
-                            'query': query_text,
-                            'mcp_results': mcp_tool_results,
-                            'search_type': 'mcp_action',
-                            'intent_analysis': {
-                                'intent_type': intent_analysis.get('intent_type'),
-                                'confidence': intent_analysis.get('confidence'),
-                                'action_type': intent_analysis.get('action_type'),
-                                'reasoning': intent_analysis.get('reasoning'),
-                                'used_llm': True,
-                                'model': llm_model or intent_analysis.get('model_used'),
-                                'prompt_source': intent_analysis.get('prompt_source', 'config_file'),
-                                'confidence_threshold': confidence_threshold
-                            }
+                        message_content = [{
+                            "type": "text",
+                            "data": "⚠️ MCP功能已关闭，无法执行MCP工具操作\n💡 请在设置中启用MCP功能后重试"
+                        }]
+                        
+                        standardized_response = {
+                            "message_id": f"msg-{int(time.time())}-{hash(query_text) % 1000:03d}",
+                            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                            "role": "assistant",
+                            "content": message_content
                         }
                         
-                        # 转换为标准化消息格式
-                        message_content = []
+                        return jsonify({'success': True, 'data': standardized_response})
+                    
+                    # 步骤2：使用标准MCP系统分析和执行工具
+                    try:
+                        from app.services.mcp.servers.mcp_manager import MCPManager
+                        from app.services.mcp_tool_analyzer import mcp_tool_analyzer
                         
-                        # 添加意图识别结果
-                        message_content.append({
-                            "type": "text",
-                            "data": f"🎯 识别为MCP操作: {intent_analysis.get('reasoning', '已识别为文件/文件夹操作')}"
-                        })
+                        # 创建MCP管理器实例
+                        mcp_manager = MCPManager()
                         
-                        # 添加MCP工具执行结果
-                        for mcp_result in mcp_tool_results:
-                            # 处理dataclass对象或字典
-                            error = getattr(mcp_result, 'error', None) if hasattr(mcp_result, 'error') else mcp_result.get('error')
-                            if error:
+                        # 初始化MCP系统（如果未初始化）
+                        if not mcp_manager.is_initialized:
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
+                            init_success = loop.run_until_complete(mcp_manager.initialize())
+                            loop.close()
+                            
+                            if not init_success:
+                                message_content = [{
+                                    "type": "text",
+                                    "data": "❌ MCP系统初始化失败，无法执行工具操作"
+                                }]
+                                
+                                standardized_response = {
+                                    "message_id": f"msg-{int(time.time())}-{hash(query_text) % 1000:03d}",
+                                    "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                                    "role": "assistant",
+                                    "content": message_content
+                                }
+                                
+                                return jsonify({'success': True, 'data': standardized_response})
+                        
+                        # 使用LLM分析需要的工具
+                        tool_analysis = mcp_tool_analyzer.analyze_tools_needed(query_text)
+                        logger.info(f"工具分析结果: {tool_analysis}")
+                        
+                        # 获取分析的工具列表
+                        tools_needed = tool_analysis.get('tools_needed', [])
+                        if not tools_needed:
+                            message_content = [{
+                                "type": "text",
+                                "data": "❌ 未能识别出需要执行的具体工具"
+                            }]
+                        else:
+                            # 执行工具序列
+                            message_content = []
+                            
+                            # 添加工具分析结果
+                            message_content.append({
+                                "type": "text",
+                                "data": f"🎯 识别为MCP操作: {intent_analysis.get('reasoning', '已识别为MCP操作')}"
+                            })
+                            
+                            if tool_analysis.get('reasoning'):
                                 message_content.append({
                                     "type": "text",
-                                    "data": f"❌ 工具执行失败: {error}"
+                                    "data": f"🔧 工具分析: {tool_analysis['reasoning']}"
                                 })
-                            else:
-                                tool_name = getattr(mcp_result, 'tool_name', None) if hasattr(mcp_result, 'tool_name') else mcp_result.get('tool_name', 'unknown')
-                                arguments = getattr(mcp_result, 'arguments', {}) if hasattr(mcp_result, 'arguments') else mcp_result.get('arguments', {})
-                                result = getattr(mcp_result, 'result', None) if hasattr(mcp_result, 'result') else mcp_result.get('result')
-                                
-                                message_content.append({
-                                    "type": "tool_call",
-                                    "data": {
-                                        "tool": tool_name,
-                                        "params": arguments,
-                                        "result": result,
-                                        "user_visible": True
-                                    }
-                                })
+                            
+                            # 执行每个工具
+                            for tool_name in tools_needed:
+                                try:
+                                    # 从tool_analysis中获取执行序列
+                                    execution_sequence = tool_analysis.get('execution_sequence', [])
+                                    tool_arguments = {}
+                                    
+                                    # 找到对应工具的参数
+                                    for step in execution_sequence:
+                                        if step.get('tool_name') == tool_name:
+                                            tool_arguments = step.get('parameters', {})
+                                            break
+                                    
+                                    # 调用标准MCP工具
+                                    loop = asyncio.new_event_loop()
+                                    asyncio.set_event_loop(loop)
+                                    result = loop.run_until_complete(
+                                        mcp_manager.call_tool(tool_name, tool_arguments)
+                                    )
+                                    loop.close()
+                                    
+                                    # 处理执行结果
+                                    if result.isError:
+                                        message_content.append({
+                                            "type": "text",
+                                            "data": f"❌ 工具 {tool_name} 执行失败: {result.content[0].get('text', 'Unknown error') if result.content else 'Unknown error'}"
+                                        })
+                                    else:
+                                        # 成功执行
+                                        tool_output = result.content[0].get('text', '操作完成') if result.content else '操作完成'
+                                        message_content.append({
+                                            "type": "tool_call",
+                                            "data": {
+                                                "tool": tool_name,
+                                                "params": tool_arguments,
+                                                "result": tool_output,
+                                                "user_visible": True
+                                            }
+                                        })
+                                        
+                                except Exception as tool_error:
+                                    logger.error(f"执行工具 {tool_name} 失败: {tool_error}")
+                                    message_content.append({
+                                        "type": "text",
+                                        "data": f"❌ 工具 {tool_name} 执行异常: {str(tool_error)}"
+                                    })
                         
                         # 构建标准化响应格式
                         standardized_response = {
@@ -250,7 +312,13 @@ def semantic_search():
                             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                             "role": "assistant",
                             "content": message_content,
-                            "legacy_data": response_data
+                            "legacy_data": {
+                                'query': query_text,
+                                'search_type': 'mcp_action',
+                                'intent_analysis': intent_analysis,
+                                'tool_analysis': tool_analysis,
+                                'mcp_system': 'standard'
+                            }
                         }
                         
                         return jsonify({
@@ -259,14 +327,7 @@ def semantic_search():
                         })
                         
                     except Exception as mcp_error:
-                        logger.error(f"MCP工具执行失败: {mcp_error}")
-                        mcp_tool_results = [{
-                            'tool_name': 'error',
-                            'arguments': {},
-                            'result': None,
-                            'error': f"MCP工具执行失败: {str(mcp_error)}",
-                            'timestamp': time.time()
-                        }]
+                        logger.error(f"标准MCP系统执行失败: {mcp_error}")
                         
                         # 错误情况也返回标准化格式
                         message_content = [{
@@ -304,7 +365,6 @@ def semantic_search():
                 intent_analysis = {
                     "intent_type": "knowledge_search",
                     "confidence": 0.5,
-                    "action_type": "search_documents",
                     "reasoning": f"意图分析失败，降级到知识库检索: {str(e)}",
                     "used_llm": False,
                     "error": str(e),
@@ -824,27 +884,41 @@ def hybrid_search():
                     logger.info(f"执行MCP操作: {query_text}")
                     skip_search = True
                     
-                    # 使用简化的MCP服务执行操作
-                    from app.services.mcp_service_simple import simple_mcp_service
+                    # 使用完整的MCP工具分析和执行流程
+                    from app.services.mcp_tool_analyzer import mcp_tool_analyzer
+                    from app.services.mcp_tool_executor import mcp_tool_executor
                     
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    try:
-                        mcp_tool_results = loop.run_until_complete(
-                            simple_mcp_service.execute_tool_sequence(query_text)
-                        )
-                        logger.info(f"MCP工具执行完成，共 {len(mcp_tool_results)} 个步骤")
-                    except Exception as mcp_error:
-                        logger.error(f"MCP工具执行失败: {mcp_error}")
-                        mcp_tool_results = [{
-                            'tool_name': 'error',
-                            'arguments': {},
-                            'result': None,
-                            'error': f"MCP工具执行失败: {str(mcp_error)}",
-                            'timestamp': time.time()
-                        }]
-                    finally:
-                        loop.close()
+                    # 1. 分析需要的工具
+                    tool_analysis = mcp_tool_analyzer.analyze_tools_needed(query_text)
+                    
+                    # 2. 验证工具可用性
+                    tool_validation = mcp_tool_analyzer.validate_tools(tool_analysis.get('tools_needed', []))
+                    
+                    if not tool_validation['all_valid']:
+                        # 有不可用的工具，返回错误信息
+                        error_msg = mcp_tool_analyzer.get_error_message(tool_validation['error_type'], tool_validation.get('invalid_tools', []))
+                        mcp_tool_results = [{'tool_name': 'error', 'arguments': {}, 'result': None, 'error': error_msg, 'timestamp': time.time()}]
+                        logger.warning(f"MCP工具验证失败: {error_msg}")
+                    else:
+                        # 3. 执行工具
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        try:
+                            mcp_tool_results = loop.run_until_complete(
+                                mcp_tool_executor.execute_tools_from_analysis(query_text, tool_analysis)
+                            )
+                            logger.info(f"基于LLM分析的MCP工具执行完成，共 {len(mcp_tool_results)} 个步骤")
+                        except Exception as mcp_error:
+                            logger.error(f"MCP工具执行失败: {mcp_error}")
+                            mcp_tool_results = [{
+                                'tool_name': 'error',
+                                'arguments': {},
+                                'result': None,
+                                'error': f"MCP工具执行失败: {str(mcp_error)}",
+                                'timestamp': time.time()
+                            }]
+                        finally:
+                            loop.close()
                         
             except Exception as e:
                 logger.error(f"意图分析失败: {e}")
@@ -924,6 +998,9 @@ def hybrid_search():
             original_query = query_text
             optimized_query = query_text
             min_score = 0.0
+            file_results = []  # 初始化空的文件结果列表
+            semantic_results = []  # 初始化空的语义搜索结果
+            keyword_results = []   # 初始化空的关键词搜索结果
         
         # 5. LLM结果重排序（基于文件）
         reranked = False

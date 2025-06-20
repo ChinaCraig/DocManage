@@ -1,0 +1,220 @@
+# ==========================================
+# 意图识别系统独立配置文件
+# ==========================================
+# 说明：该配置文件专门用于意图识别模块，与全局LLM配置完全隔离
+# 版本：v2.0 - 简化返回格式，纯意图识别
+# ==========================================
+
+# ==========================================
+# 服务模式配置
+# ==========================================
+service:
+  # 服务模式：remote（远程API）| local（本地模型）
+  mode: "remote"
+  
+  # 当前使用的提供商和模型
+  current_provider: "deepseek"
+  current_model: "deepseek-chat"
+
+# ==========================================
+# LLM提供商配置 - 仅支持deepseek和豆包
+# ==========================================
+providers:
+  # DeepSeek配置
+  deepseek:
+    enabled: true
+    name: "DeepSeek"
+    api_key_env: "DEEPSEEK_API_KEY"  # 环境变量名
+    base_url: "https://api.deepseek.com"
+    models:
+      deepseek-chat: "DeepSeek Chat"
+      deepseek-coder: "DeepSeek Coder"
+      deepseek-v3: "DeepSeek V3"
+    default_model: "deepseek-chat"
+    
+  # 豆包（字节跳动）配置
+  doubao:
+    enabled: true
+    name: "豆包"
+    api_key_env: "DOUBAO_API_KEY"  # 环境变量名
+    base_url: "https://ark.cn-beijing.volces.com"
+    models:
+      doubao-lite-4k: "豆包 Lite 4K"
+      doubao-pro-4k: "豆包 Pro 4K"
+      doubao-pro-32k: "豆包 Pro 32K"
+    default_model: "doubao-pro-4k"
+
+# ==========================================
+# 模型调用参数配置
+# ==========================================
+model_params:
+  max_tokens: 200
+  temperature: 0.1
+  timeout: 30
+  max_retries: 2
+
+# ==========================================
+# 意图识别提示词配置 - 简化版本
+# ==========================================
+prompts:
+  # 系统提示词
+  system: |
+    你是一个专业的用户意图识别专家。你的任务是分析用户输入，仅判断用户意图类型。
+
+    请严格按照以下JSON格式返回分析结果（不要添加markdown格式或其他文本）：
+    {
+      "intent_type": "normal_chat|knowledge_search|mcp_action",
+      "confidence": 0.0-1.0之间的数字,
+      "reasoning": "说明判断依据"
+    }
+
+    意图分类说明：
+    1. mcp_action（MCP操作）:
+       - 用户想要执行具体的系统操作
+       - 主要是文件创建、文件夹创建、系统管理等操作
+       - 关键词：创建、新建、建立、生成、制作、添加、删除、移动等
+    
+    2. knowledge_search（知识库检索）:
+       - 用户想要在已有文档中查找特定信息
+       - 需要基于已存储的文档内容来回答问题
+       - 关键词：查找、搜索、分析、文档中、资料里、检索、什么内容、有哪些等
+    
+    3. normal_chat（普通聊天）: 
+       - 用户想要进行一般性对话交流
+       - 询问常识性问题、技术问题、寻求建议等
+       - 关键词：什么是、如何、为什么、请解释、建议、你是谁等
+
+    判断优先级：
+    1. 最高优先级：如果明确包含创建、新建等操作词 → mcp_action
+    2. 中等优先级：如果明确要查找、搜索文档内容 → knowledge_search  
+    3. 兜底优先级：其他所有情况，包括一般对话 → normal_chat
+
+  # 用户提示词模板
+  user_template: |
+    请分析以下用户输入的意图：
+
+    用户输入："{query}"
+
+    请返回JSON格式的分析结果：
+
+  # 置信度阈值
+  confidence_threshold: 0.6
+
+# ==========================================
+# 降级处理配置
+# ==========================================
+fallback:
+  # 是否启用降级处理
+  enabled: true
+  
+  # 降级触发条件（仅当LLM分析失败时才降级）
+  triggers:
+    - "llm_api_error"      # LLM API调用失败
+    - "json_parse_error"   # JSON解析失败
+    - "timeout_error"      # 请求超时
+  
+  # 降级处理策略
+  strategy: "keyword_analysis"  # keyword_analysis | fixed_response
+  
+  # 降级时的默认意图
+  default_intent: "normal_chat"
+  default_confidence: 0.5
+
+# ==========================================
+# 关键词分析配置
+# ==========================================
+keyword_analysis:
+  # 是否启用关键词分析
+  enabled: true
+  
+  # 关键词权重配置
+  weights:
+    exact_match: 1.0      # 精确匹配权重
+    partial_match: 0.7    # 部分匹配权重
+    context_boost: 0.3    # 上下文增强权重
+  
+  # 意图关键词映射（按优先级排序）
+  intent_keywords:
+    # MCP操作意图关键词（最高优先级）
+    mcp_action:
+      primary:
+        - ["创建", "新建", "建立", "生成", "制作"]
+        - ["添加", "增加", "建", "做一个", "写个"]
+        - ["文件", "文档", "文件夹", "目录"]
+        - ["删除", "移动", "复制", "重命名"]
+      secondary:
+        - ["保存", "存储", "写入"]
+        - ["组织", "整理", "归档"]
+      confidence_base: 0.9
+      
+    # 知识库检索意图关键词（中等优先级）
+    knowledge_search:
+      primary:
+        - ["查找", "搜索", "寻找", "检索", "查询"]
+        - ["分析", "检查", "审查", "评估", "对比"]
+        - ["文档中", "资料里", "报告显示", "数据表明"]
+        - ["内容", "信息", "数据", "资料"]
+        - ["有哪些", "什么内容", "包含什么"]
+      secondary:
+        - ["确认", "核查", "检验", "验证"]
+        - ["统计", "汇总", "总结", "归纳"]
+      confidence_base: 0.8
+      
+    # 普通聊天意图关键词（兜底优先级）
+    normal_chat:
+      primary:
+        - ["什么是", "如何", "为什么", "请解释", "请介绍"]
+        - ["你是谁", "你好", "介绍自己", "你叫什么"]
+        - ["建议", "推荐", "意见", "看法", "评价"]
+        - ["帮我写", "帮我生成", "给我一个例子"]
+      secondary:
+        - ["教我", "指导", "怎么办", "怎么做"]
+        - ["比较", "对比", "区别", "差异"]
+      confidence_base: 0.6
+      
+  # 文件类型检测
+  file_detection:
+    extensions: [".txt", ".md", ".doc", ".docx", ".pdf", ".xls", ".xlsx"]
+    confidence_boost: 0.2
+    
+  # 上下文增强规则
+  context_rules:
+    # 文件操作上下文
+    file_context:
+      patterns: [".*文件.*", ".*目录.*", ".*文件夹.*"]
+      intent_boost:
+        mcp_action: 0.3
+        
+    # 搜索上下文  
+    search_context:
+      patterns: [".*查找.*", ".*搜索.*", ".*分析.*"]
+      intent_boost:
+        knowledge_search: 0.3
+        
+    # 对话上下文
+    chat_context:
+      patterns: [".*什么.*", ".*如何.*", ".*为什么.*"]
+      intent_boost:
+        normal_chat: 0.2
+        
+    # 身份询问上下文
+    identity_context:
+      patterns: [".*你是谁.*", ".*介绍.*自己.*", ".*你好.*"]
+      intent_boost:
+        normal_chat: 0.5
+        knowledge_search: -0.3
+
+# ==========================================
+# 性能配置
+# ==========================================
+performance:
+  # 缓存配置
+  cache:
+    enabled: true
+    ttl: 3600  # 缓存时间（秒）
+    max_entries: 1000
+    
+  # 监控配置
+  monitoring:
+    enabled: true
+    log_level: "INFO" 
