@@ -28,7 +28,7 @@ def get_intent_config():
             'fallback_strategy': fallback_config.get('strategy', 'keyword_analysis'),
             'keyword_analysis_enabled': keyword_analysis.get('enabled', True),
             'available_providers': list(llm_config.get('providers', {}).keys()),
-            'intent_types': ['normal_chat', 'knowledge_search', 'mcp_action'],
+            'intent_types': ['normal_chat', 'knowledge_search', 'mcp_action', 'document_generation'],
             'cache_enabled': config.get('performance', {}).get('cache', {}).get('enabled', True)
         }
         
@@ -53,7 +53,7 @@ def get_available_scenarios():
             'default': {
                 'name': 'default',
                 'description': '默认意图识别场景',
-                'intent_types': ['normal_chat', 'knowledge_search', 'mcp_action']
+                'intent_types': ['normal_chat', 'knowledge_search', 'mcp_action', 'document_generation']
             }
         }
         

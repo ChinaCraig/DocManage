@@ -171,10 +171,10 @@ class IntentRecognitionService:
             # 应用文件类型检测
             intent_scores = self._apply_file_detection(query, intent_scores)
             
-            # 按优先级顺序选择意图（MCP > knowledge_search > normal_chat）
+                            # 按优先级顺序选择意图（document_generation > mcp_action > knowledge_search > normal_chat）
             if intent_scores:
                 # 定义优先级顺序
-                priority_order = ['mcp_action', 'knowledge_search', 'normal_chat']
+                priority_order = ['document_generation', 'mcp_action', 'knowledge_search', 'normal_chat']
                 
                 # 按优先级和置信度选择最佳意图
                 best_intent = None
@@ -184,7 +184,9 @@ class IntentRecognitionService:
                     if intent_type in intent_scores:
                         confidence = intent_scores[intent_type]
                         # 对于高优先级意图，较低的置信度阈值也接受
-                        min_threshold = 0.3 if intent_type == 'mcp_action' else 0.4 if intent_type == 'knowledge_search' else 0.2
+                        min_threshold = (0.25 if intent_type == 'document_generation' else 
+                                       0.3 if intent_type == 'mcp_action' else 
+                                       0.4 if intent_type == 'knowledge_search' else 0.2)
                         
                         if confidence > min_threshold and confidence > best_confidence:
                             best_intent = (intent_type, confidence)
@@ -275,6 +277,12 @@ class IntentRecognitionService:
             action_type = 'search_documents'
             parameters['search_keywords'] = self._extract_search_keywords(query)
             
+        elif intent_type == 'document_generation':
+            action_type = 'generate_document'
+            parameters['source_path'] = self._extract_source_path(query)
+            parameters['output_format'] = self._extract_output_format(query)
+            parameters['document_type'] = self._extract_document_type(query)
+            
         elif intent_type == 'mcp_action':
             # 判断是创建文件还是文件夹
             if self._is_file_creation(query):
@@ -312,7 +320,7 @@ class IntentRecognitionService:
                 raise ValueError(f"响应缺少必需字段，需要: {required_fields}")
             
             # 验证意图类型
-            valid_intents = ['normal_chat', 'knowledge_search', 'mcp_action']
+            valid_intents = ['normal_chat', 'knowledge_search', 'mcp_action', 'document_generation']
             if result['intent_type'] not in valid_intents:
                 raise ValueError(f"无效的意图类型: {result['intent_type']}")
             
@@ -475,6 +483,336 @@ class IntentRecognitionService:
         if pattern:
             return pattern.group(1) or pattern.group(2)
         return None
+    
+    def _extract_source_path(self, query: str) -> Optional[str]:
+        """提取源文件或文件夹路径 - LLM增强版"""
+        # 首先尝试LLM提取
+        llm_result = self._extract_source_path_with_llm(query)
+        if llm_result:
+            logger.info(f"LLM成功提取源路径: {llm_result}")
+            return llm_result
+        
+        # LLM失败时降级到正则表达式
+        logger.info("LLM提取失败，降级到正则表达式")
+        return self._extract_source_path_with_regex(query)
+    
+    def _extract_source_path_with_llm(self, query: str) -> Optional[str]:
+        """使用LLM提取源路径"""
+        try:
+            # 检查配置是否启用LLM参数提取
+            param_config = self.config_manager.config.get('parameter_extraction', {})
+            if not param_config.get('enabled', False):
+                return None
+            
+            # 获取LLM提示词配置
+            prompts = param_config.get('prompts', {})
+            source_extraction = prompts.get('source_path_extraction', {})
+            
+            if not source_extraction:
+                logger.warning("未找到源路径提取提示词配置")
+                return None
+            
+            # 构建提示词
+            system_prompt = source_extraction.get('system', '')
+            user_template = source_extraction.get('user_template', '')
+            
+            if not system_prompt or not user_template:
+                logger.warning("源路径提取提示词配置不完整")
+                return None
+            
+            user_prompt = user_template.format(query=query)
+            combined_prompt = f"{system_prompt}\n\n{user_prompt}"
+            
+            # 获取LLM配置
+            llm_config = param_config.get('llm_config', {})
+            provider = llm_config.get('provider', 'deepseek')
+            model = llm_config.get('model', 'deepseek-chat')
+            llm_model = f"{provider}:{model}"
+            
+            # 调用LLM
+            from app.services.llm import LLMService
+            
+            response = LLMService.generate_answer(
+                query=combined_prompt,
+                context="",
+                llm_model=llm_model,
+                scenario="parameter_extraction"
+            )
+            
+            if response and response.strip():
+                # 清理响应
+                extracted_path = response.strip()
+                
+                # 检查是否是错误响应
+                error_indicators = [
+                    '抱歉', '无法', '暂时', '稍后', '失败', 
+                    'sorry', 'cannot', 'unable', 'failed'
+                ]
+                
+                if any(indicator in extracted_path.lower() for indicator in error_indicators):
+                    logger.warning(f"LLM返回错误响应: {extracted_path}")
+                    return None
+                
+                # 如果返回"无"，表示没有找到
+                if extracted_path.lower() in ['无', 'none', 'null', '']:
+                    return None
+                
+                # 基本清理
+                extracted_path = re.sub(r'^["\'"](.*)["\'""]$', r'\1', extracted_path)
+                extracted_path = extracted_path.strip()
+                
+                if extracted_path and len(extracted_path) > 0:
+                    logger.info(f"LLM提取源路径成功: '{extracted_path}'")
+                    return extracted_path
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"LLM提取源路径失败: {e}")
+            return None
+    
+    def _extract_source_path_with_regex(self, query: str) -> Optional[str]:
+        """使用正则表达式提取源路径（降级方案）"""
+        patterns = [
+            # 分析类查询
+            r'分析(?:下|一下)?(.+?)(?:表格|文件|这个)',
+            r'分析(?:下|一下)?(.+?)(?:，|,|。|根据)',
+            
+            # 基于/根据类查询（扩展动词）
+            r'基于(.+?)(?:生成|制作|写|做|总结|汇总|整理)',
+            r'根据(.+?)(?:生成|制作|写|做|总结|汇总|整理)',
+            r'利用(.+?)(?:生成|制作|写|做|总结|汇总|整理)',
+            r'使用(.+?)(?:生成|制作|写|做|总结|汇总|整理)',
+            r'参考(.+?)(?:生成|制作|写|做|总结|汇总|整理)',
+            r'从(.+?)(?:中|里)(?:生成|制作|写|做|总结|汇总|整理)',
+            
+            # 文件名模式
+            r'(.+?\.(?:xlsx?|docx?|pdf|txt|pptx?))(?:\s|，|,|这个|文件|表格)',
+            
+            # 文件夹模式（增强版，包含更多动词）
+            r'(.+?)(?:文件夹|文件|目录)(?:的|中|里|下)?.*?(?:生成|制作|写|做|分析|总结|汇总|整理)',
+            
+            # 数字开头的文件夹名（针对"02王赛"这种格式）
+            r'((?:\d+|[0-9]+)[^\s，,。]*?)(?:文件夹|目录)(?:的|中|里|下)?.*?(?:生成|制作|写|做|分析|总结|汇总|整理)',
+            
+            # 通用文件引用
+            r'(.+?)(?:这个|该|此)(?:文件|表格|文档)',
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, query)
+            if match:
+                source = match.group(1).strip()
+                
+                # 清理提取的路径
+                source = re.sub(r'^(?:这个|那个|该|此)', '', source)
+                source = re.sub(r'(?:表格|文件|文档)$', '', source)
+                source = source.strip()
+                
+                if source and len(source) > 1:  # 至少要有2个字符
+                    return source
+        return None
+    
+    def _extract_output_format(self, query: str) -> str:
+        """提取输出格式 - LLM增强版，默认为txt"""
+        # 首先检查是否有明确的格式指定
+        regex_result = self._extract_output_format_with_regex(query)
+        
+        # 如果正则检测到明确格式（非默认txt），直接使用
+        if regex_result != 'txt':
+            logger.info(f"正则表达式检测到明确格式: {regex_result}")
+            return regex_result
+        
+        # 否则尝试LLM提取
+        llm_result = self._extract_output_format_with_llm(query)
+        if llm_result and llm_result in ['excel', 'pdf', 'doc', 'ppt']:  # 只接受非默认格式
+            logger.info(f"LLM成功提取输出格式: {llm_result}")
+            return llm_result
+        
+        # 默认返回txt
+        logger.info(f"使用默认输出格式: txt")
+        return 'txt'
+    
+    def _extract_output_format_with_llm(self, query: str) -> Optional[str]:
+        """使用LLM提取输出格式"""
+        try:
+            # 检查配置是否启用LLM参数提取
+            param_config = self.config_manager.config.get('parameter_extraction', {})
+            if not param_config.get('enabled', False):
+                return None
+            
+            # 获取LLM提示词配置
+            prompts = param_config.get('prompts', {})
+            format_extraction = prompts.get('output_format_extraction', {})
+            
+            if not format_extraction:
+                return None
+            
+            # 构建提示词
+            system_prompt = format_extraction.get('system', '')
+            user_template = format_extraction.get('user_template', '')
+            
+            if not system_prompt or not user_template:
+                return None
+            
+            user_prompt = user_template.format(query=query)
+            combined_prompt = f"{system_prompt}\n\n{user_prompt}"
+            
+            # 获取LLM配置
+            llm_config = param_config.get('llm_config', {})
+            provider = llm_config.get('provider', 'deepseek')
+            model = llm_config.get('model', 'deepseek-chat')
+            llm_model = f"{provider}:{model}"
+            
+            # 调用LLM
+            from app.services.llm import LLMService
+            
+            response = LLMService.generate_answer(
+                query=combined_prompt,
+                context="",
+                llm_model=llm_model,
+                scenario="parameter_extraction"
+            )
+            
+            if response and response.strip():
+                extracted_format = response.strip().lower()
+                
+                # 验证格式是否有效
+                valid_formats = ['txt', 'doc', 'pdf', 'excel', 'ppt']
+                if extracted_format in valid_formats:
+                    return extracted_format
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"LLM提取输出格式失败: {e}")
+            return None
+    
+    def _extract_output_format_with_regex(self, query: str) -> str:
+        """使用正则表达式提取输出格式（降级方案）"""
+        # 明确的输出格式关键词（优先级高）
+        explicit_formats = {
+            'txt': ['生成txt', '输出txt', '保存为txt', '文本格式'],
+            'doc': ['生成doc', '输出doc', 'word格式', '保存为word'],
+            'pdf': ['生成pdf', '输出pdf', 'pdf格式', '保存为pdf'],
+            'excel': ['生成excel', '输出excel', '保存为excel', '表格格式'],
+            'ppt': ['生成ppt', '输出ppt', 'ppt格式', '演示文稿格式']
+        }
+        
+        query_lower = query.lower()
+        
+        # 首先检查明确的输出格式指令
+        for format_type, keywords in explicit_formats.items():
+            for keyword in keywords:
+                if keyword in query_lower:
+                    return format_type
+        
+        # 如果没有明确指定，且提到文档分析，默认返回txt
+        analysis_keywords = ['分析', '分析下', '分析一下', '查看', '看看']
+        if any(keyword in query_lower for keyword in analysis_keywords):
+            return 'txt'
+        
+        # 检查文件扩展名引用（可能是输入文件而非输出格式）
+        input_formats = {
+            'doc': ['word', 'docx'],
+            'excel': ['excel', 'xls', 'xlsx'],
+            'pdf': ['pdf'],
+            'ppt': ['ppt', 'pptx']
+        }
+        
+        # 如果查询中包含"表格"但没有明确的输出格式，默认为txt
+        if '表格' in query_lower and not any(keyword in query_lower for keywords in explicit_formats.values() for keyword in keywords):
+            return 'txt'
+        
+        # 默认返回txt格式
+        return 'txt'
+    
+    def _extract_document_type(self, query: str) -> str:
+        """提取文档类型 - LLM增强版"""
+        # 首先尝试LLM提取
+        llm_result = self._extract_document_type_with_llm(query)
+        if llm_result:
+            logger.info(f"LLM成功提取文档类型: {llm_result}")
+            return llm_result
+        
+        # LLM失败时降级到正则表达式
+        regex_result = self._extract_document_type_with_regex(query)
+        logger.info(f"使用正则表达式提取文档类型: {regex_result}")
+        return regex_result
+    
+    def _extract_document_type_with_llm(self, query: str) -> Optional[str]:
+        """使用LLM提取文档类型"""
+        try:
+            # 检查配置是否启用LLM参数提取
+            param_config = self.config_manager.config.get('parameter_extraction', {})
+            if not param_config.get('enabled', False):
+                return None
+            
+            # 获取LLM提示词配置
+            prompts = param_config.get('prompts', {})
+            type_extraction = prompts.get('document_type_extraction', {})
+            
+            if not type_extraction:
+                return None
+            
+            # 构建提示词
+            system_prompt = type_extraction.get('system', '')
+            user_template = type_extraction.get('user_template', '')
+            
+            if not system_prompt or not user_template:
+                return None
+            
+            user_prompt = user_template.format(query=query)
+            combined_prompt = f"{system_prompt}\n\n{user_prompt}"
+            
+            # 获取LLM配置
+            llm_config = param_config.get('llm_config', {})
+            provider = llm_config.get('provider', 'deepseek')
+            model = llm_config.get('model', 'deepseek-chat')
+            llm_model = f"{provider}:{model}"
+            
+            # 调用LLM
+            from app.services.llm import LLMService
+            
+            response = LLMService.generate_answer(
+                query=combined_prompt,
+                context="",
+                llm_model=llm_model,
+                scenario="parameter_extraction"
+            )
+            
+            if response and response.strip():
+                extracted_type = response.strip().lower()
+                
+                # 验证类型是否有效
+                valid_types = ['summary', 'report', 'analysis', 'documentation', 'other']
+                if extracted_type in valid_types:
+                    return extracted_type
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"LLM提取文档类型失败: {e}")
+            return None
+    
+    def _extract_document_type_with_regex(self, query: str) -> str:
+        """使用正则表达式提取文档类型（降级方案）"""
+        document_types = {
+            'report': ['报告', '分析报告', '总结报告', '汇报'],
+            'summary': ['总结', '汇总', '梳理', '归纳'],
+            'analysis': ['分析', '评估', '审查', '检查'],
+            'documentation': ['文档', '说明', '手册', '指南'],
+            'other': ['其他', '文件', '内容']
+        }
+        
+        query_lower = query.lower()
+        for doc_type, keywords in document_types.items():
+            for keyword in keywords:
+                if keyword in query_lower:
+                    return doc_type
+        
+        # 默认返回通用类型
+        return 'summary'
 
 # 创建全局实例
 intent_service = IntentRecognitionService() 

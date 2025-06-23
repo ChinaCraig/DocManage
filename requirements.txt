@@ -13,6 +13,9 @@ PyPDF2==3.0.1
 python-docx==1.1.0
 docx2txt==0.8
 
+# PowerPoint处理
+python-pptx==0.6.21
+
 # Excel处理
 pandas>=2.1.4
 openpyxl==3.1.2

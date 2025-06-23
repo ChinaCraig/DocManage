@@ -418,6 +418,121 @@ def semantic_search():
                             'data': standardized_response
                         })
                         
+                elif intent_type == 'document_generation' and confidence > confidence_threshold:
+                    # 文档生成：基于现有文件/文件夹生成新文档
+                    logger.info(f"执行文档生成操作: {query_text}")
+                    skip_search = True
+                    
+                    try:
+                        from app.services.document_generation_service import DocumentGenerationService
+                        from app.services.intent_service import intent_service
+                        
+                        # 分析用户查询，提取参数（使用LLM增强的参数提取）
+                        action_type, parameters = intent_service._determine_action_and_parameters('document_generation', query_text)
+                        
+                        source_path = parameters.get('source_path', '')
+                        output_format = parameters.get('output_format', 'txt')
+                        document_type = parameters.get('document_type', 'summary')
+                        
+                        logger.info(f"参数提取结果 - 源路径: '{source_path}', 输出格式: {output_format}, 文档类型: {document_type}")
+                        
+                        if not source_path:
+                            # 没有找到源路径，返回错误
+                            message_content = [{
+                                "type": "text",
+                                "data": "⚠️ 无法确定要基于哪个文件或文件夹生成文档\n💡 请明确指定源文件或文件夹，支持多种表达方式：\n• 基于xx文件夹生成总结文档\n• 根据xx文件写个分析报告\n• 用xx文件夹做个统计\n• 帮我分析xx文件的内容\n• 从xx目录整理一份资料\n\n🤖 系统已使用AI智能识别，支持更自然的语言表达"
+                            }]
+                        else:
+                            # 调用文档生成服务
+                            generation_result = DocumentGenerationService.generate_document(
+                                source_path=source_path,
+                                output_format=output_format,
+                                document_type=document_type,
+                                query_text=query_text,
+                                llm_model=llm_model
+                            )
+                            
+                            if generation_result.get('success'):
+                                # 成功生成文档
+                                source_type = generation_result.get('source_type', 'unknown')
+                                source_name = generation_result.get('source_info', {}).get('name', source_path)
+                                generated_content = generation_result.get('generated_content', '')
+                                saved_file = generation_result.get('saved_file')
+                                
+                                message_content = [
+                                    {
+                                        "type": "text", 
+                                        "data": f"📄 基于{source_type} '{source_name}' 成功生成{DocumentGenerationService.DOCUMENT_TYPES.get(document_type, '文档')}"
+                                    },
+                                    {
+                                        "type": "markdown",
+                                        "data": f"## 生成的文档内容\n\n{generated_content}"
+                                    }
+                                ]
+                                
+                                if saved_file:
+                                    message_content.append({
+                                        "type": "text",
+                                        "data": f"💾 文档已保存为: {saved_file['name']}"
+                                    })
+                                
+                                # 添加统计信息
+                                if source_type == 'folder':
+                                    processed_count = generation_result.get('processed_files_count', 0)
+                                    total_count = generation_result.get('total_files_count', 0)
+                                    message_content.append({
+                                        "type": "text",
+                                        "data": f"📊 处理统计: 成功处理 {processed_count}/{total_count} 个文件"
+                                    })
+                            else:
+                                # 生成失败
+                                error_msg = generation_result.get('error', '未知错误')
+                                message_content = [{
+                                    "type": "text",
+                                    "data": f"❌ 文档生成失败: {error_msg}"
+                                }]
+                        
+                        # 构建标准化响应
+                        standardized_response = {
+                            "message_id": f"msg-{int(time.time())}-{hash(query_text) % 1000:03d}",
+                            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                            "role": "assistant",
+                            "content": message_content,
+                            "legacy_data": {
+                                'intent_analysis': intent_analysis,
+                                'generation_result': generation_result if 'generation_result' in locals() else None,
+                                'query': query_text,
+                                'search_type': 'document_generation'
+                            }
+                        }
+                        
+                        return jsonify({
+                            'success': True,
+                            'data': standardized_response
+                        })
+                        
+                    except Exception as doc_gen_error:
+                        logger.error(f"文档生成失败: {doc_gen_error}")
+                        
+                        # 错误情况也返回标准化格式
+                        message_content = [{
+                            "type": "text",
+                            "data": f"❌ 文档生成操作失败: {str(doc_gen_error)}"
+                        }]
+                        
+                        standardized_response = {
+                            "message_id": f"msg-{int(time.time())}-{hash(query_text) % 1000:03d}",
+                            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                            "role": "assistant",
+                            "content": message_content,
+                            "legacy_data": {'error': str(doc_gen_error)}
+                        }
+                        
+                        return jsonify({
+                            'success': True,
+                            'data': standardized_response
+                        })
+                
                 # 对于 knowledge_search 意图，继续执行向量检索（不需要特殊处理）
                 elif intent_type == 'knowledge_search':
                     logger.info(f"执行知识库检索操作: {query_text}")
