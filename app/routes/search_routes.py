@@ -459,6 +459,19 @@ def semantic_search():
                                 generated_content = generation_result.get('generated_content', '')
                                 saved_file = generation_result.get('saved_file')
                                 
+                                # 处理生成内容中的超链接（基于记忆中的实现）
+                                if generated_content:
+                                    # 调用TextPreviewService处理超链接
+                                    try:
+                                        from app.services.preview.text_preview import TextPreviewService
+                                        preview_service = TextPreviewService()
+                                        processed_content = preview_service._process_hyperlinks(generated_content)
+                                    except Exception as e:
+                                        logger.warning(f"处理超链接失败: {e}")
+                                        processed_content = generated_content
+                                else:
+                                    processed_content = generated_content
+                                
                                 message_content = [
                                     {
                                         "type": "text", 
@@ -466,14 +479,29 @@ def semantic_search():
                                     },
                                     {
                                         "type": "markdown",
-                                        "data": f"## 生成的文档内容\n\n{generated_content}"
+                                        "data": f"## 生成的文档内容\n\n{processed_content}"
                                     }
                                 ]
                                 
                                 if saved_file:
+                                    # 为保存的文件名创建可点击链接（基于现有实现）
+                                    file_link_obj = {
+                                        "text": saved_file['name'],
+                                        "document_id": saved_file.get('id')
+                                    }
+                                    
                                     message_content.append({
                                         "type": "text",
-                                        "data": f"💾 文档已保存为: {saved_file['name']}"
+                                        "data": "💾 文档已保存为: "
+                                    })
+                                    
+                                    # 添加文件链接表格（使用现有的表格链接机制）
+                                    message_content.append({
+                                        "type": "table",
+                                        "data": {
+                                            "headers": ["生成的文档"],
+                                            "rows": [[file_link_obj]]
+                                        }
                                     })
                                 
                                 # 添加统计信息
@@ -505,6 +533,11 @@ def semantic_search():
                                 'search_type': 'document_generation'
                             }
                         }
+                        
+                        # 如果文档生成成功，添加树刷新标识
+                        if 'generation_result' in locals() and generation_result.get('success') and generation_result.get('saved_file'):
+                            standardized_response['tree_refresh'] = True
+                            logger.info("文档生成成功，已标记需要刷新文档树")
                         
                         return jsonify({
                             'success': True,

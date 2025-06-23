@@ -4,6 +4,7 @@ import logging
 from datetime import datetime
 import chardet
 import mimetypes
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -385,4 +386,47 @@ class TextPreviewService(BasePreviewService):
     
     def generate_thumbnail(self, file_path, output_path=None, size=(200, 200)):
         """文本文件不支持缩略图生成"""
-        return None 
+        return None
+    
+    def _process_hyperlinks(self, content):
+        """处理文档内容中的超链接标记"""
+        try:
+            # 导入所需模块
+            from app.models.document_models import DocumentNode
+            from app import db
+            
+            # 处理[LINK:文件名:document_id]格式的超链接
+            def replace_link(match):
+                file_name = match.group(1)
+                doc_id = match.group(2)
+                
+                try:
+                    # 验证文档是否存在
+                    doc = db.session.query(DocumentNode).filter_by(
+                        id=int(doc_id),
+                        is_deleted=False
+                    ).first()
+                    
+                    if doc:
+                        # 创建可点击的HTML链接
+                        return f'<a href="#" class="file-name-link" onclick="selectFileFromChat({doc_id}); return false;" title="点击定位并预览文件">{file_name}</a>'
+                    else:
+                        # 如果文档不存在，返回普通文本
+                        return file_name
+                except (ValueError, TypeError):
+                    # 如果document_id无效，返回普通文本
+                    return file_name
+            
+            # 匹配[LINK:文件名:document_id]格式
+            link_pattern = r'\[LINK:([^:]+):(\d+)\]'
+            processed_content = re.sub(link_pattern, replace_link, content)
+            
+            # 处理[FILE:文件名:document_id]格式（作为备用格式）
+            file_pattern = r'\[FILE:([^:]+):(\d+)\]'
+            processed_content = re.sub(file_pattern, replace_link, processed_content)
+            
+            return processed_content
+            
+        except Exception as e:
+            logger.error(f"处理超链接失败: {e}")
+            return content 

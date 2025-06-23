@@ -2964,6 +2964,20 @@ function handleStandardizedMessageInteractions(message) {
             }, 1000);
         }
     }
+    
+    // 如果标记了需要刷新文档树（文档生成成功时）
+    if (message.tree_refresh === true) {
+        console.log('检测到tree_refresh标记，即将刷新文档树');
+        setTimeout(() => {
+            console.log('执行文档树刷新...');
+            loadFileTree().then(() => {
+                console.log('文档树刷新完成');
+                showToast('文档树已刷新', 'success', 2000);
+            }).catch(error => {
+                console.error('文档树刷新失败:', error);
+            });
+        }, 1000);
+    }
 }
 
 // 传统聊天响应处理函数已移除，统一使用标准化消息格式

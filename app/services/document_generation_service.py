@@ -155,6 +155,7 @@ class DocumentGenerationService:
                         file_contents.append({
                             'file_name': file_node.name,
                             'file_type': file_node.file_type,
+                            'document_id': file_node.id,  # 添加document_id用于生成超链接
                             'content': content[:2000]  # 限制内容长度避免token过多
                         })
                         processed_count += 1
@@ -241,6 +242,7 @@ class DocumentGenerationService:
             file_contents = [{
                 'file_name': file.name,
                 'file_type': file.file_type,
+                'document_id': file.id,  # 添加document_id用于生成超链接
                 'content': content[:3000]  # 单文件可以允许更多内容
             }]
             
@@ -391,6 +393,7 @@ class DocumentGenerationService:
 3. 语言要专业、准确、简洁
 4. 保持逻辑清晰，条理分明
 5. 输出纯文本格式，不要使用markdown或其他格式标记
+6. **重要：当提到具体文件时，请使用[LINK:文件名:document_id]格式标记，这样可以为用户提供可点击的文件链接**
 
 请直接输出生成的文档内容，不要添加任何解释或说明。"""
 
@@ -405,7 +408,7 @@ class DocumentGenerationService:
             # 添加文件内容
             for i, file_content in enumerate(source_contents, 1):
                 user_prompt += f"""
-文件{i}: {file_content['file_name']} ({file_content['file_type']})
+文件{i}: {file_content['file_name']} ({file_content['file_type']}) [ID: {file_content.get('document_id', 'unknown')}]
 内容摘要:
 {file_content['content'][:1500]}
 {'...(内容过长已截断)' if len(file_content['content']) > 1500 else ''}
@@ -484,9 +487,16 @@ class DocumentGenerationService:
             for i, file_content in enumerate(source_contents, 1):
                 file_name = file_content.get('file_name', '未知文件')
                 file_type = file_content.get('file_type', '未知')
+                document_id = file_content.get('document_id', None)
                 content = file_content.get('content', '')
                 
-                summary_lines.append(f"### {i}. {file_name}")
+                # 为文件名添加超链接标记（如果有document_id）
+                if document_id:
+                    file_display_name = f"[LINK:{file_name}:{document_id}]"
+                else:
+                    file_display_name = file_name
+                
+                summary_lines.append(f"### {i}. {file_display_name}")
                 summary_lines.append(f"**文件类型:** {file_type}")
                 summary_lines.append(f"**内容长度:** {len(content)} 字符")
                 
