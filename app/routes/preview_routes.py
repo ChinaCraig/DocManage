@@ -69,18 +69,26 @@ def preview_pdf_raw(doc_id):
             logger.warning(f"文件类型不匹配 - 期望PDF，实际: {file_type}")
             abort(400)
         
-        # 检查文件是否存在
-        logger.info(f"检查文件路径: {document.file_path}")
-        if not os.path.exists(document.file_path):
-            logger.error(f"文件不存在: {document.file_path}")
+        # 检查文件是否存在 - 处理MCP文件的路径问题
+        file_path = document.file_path
+        logger.info(f"原始文件路径: {file_path}")
+        
+        # 如果是MCP创建的文件，需要添加uploads前缀
+        if file_path and file_path.startswith('mcp_created/'):
+            file_path = os.path.join('uploads', file_path)
+            logger.info(f"MCP文件路径调整为: {file_path}")
+        
+        logger.info(f"检查文件路径: {file_path}")
+        if not os.path.exists(file_path):
+            logger.error(f"文件不存在: {file_path}")
             abort(404)
         
-        logger.info(f"文件存在，准备返回PDF文件: {document.file_path}")
+        logger.info(f"文件存在，准备返回PDF文件: {file_path}")
         
         # 直接返回PDF文件
         try:
             # 使用绝对路径
-            abs_path = os.path.abspath(document.file_path)
+            abs_path = os.path.abspath(file_path)
             logger.info(f"使用绝对路径: {abs_path}")
             
             return send_file(abs_path, 
@@ -159,18 +167,26 @@ def preview_word_raw(doc_id):
             logger.warning(f"文件类型不匹配 - 期望Word文档，实际: {file_type}")
             abort(400)
         
-        # 检查文件是否存在
-        logger.info(f"检查文件路径: {document.file_path}")
-        if not os.path.exists(document.file_path):
-            logger.error(f"文件不存在: {document.file_path}")
+        # 检查文件是否存在 - 处理MCP文件的路径问题
+        file_path = document.file_path
+        logger.info(f"原始文件路径: {file_path}")
+        
+        # 如果是MCP创建的文件，需要添加uploads前缀
+        if file_path and file_path.startswith('mcp_created/'):
+            file_path = os.path.join('uploads', file_path)
+            logger.info(f"MCP文件路径调整为: {file_path}")
+        
+        logger.info(f"检查文件路径: {file_path}")
+        if not os.path.exists(file_path):
+            logger.error(f"文件不存在: {file_path}")
             abort(404)
         
-        logger.info(f"文件存在，准备返回Word文件: {document.file_path}")
+        logger.info(f"文件存在，准备返回Word文件: {file_path}")
         
         # 直接返回Word文件
         try:
             # 使用绝对路径
-            abs_path = os.path.abspath(document.file_path)
+            abs_path = os.path.abspath(file_path)
             logger.info(f"使用绝对路径: {abs_path}")
             
             # 根据文件扩展名设置MIME类型
@@ -254,18 +270,26 @@ def preview_excel_raw(doc_id):
             logger.warning(f"文件类型不匹配 - 期望Excel文档，实际: {file_type}")
             abort(400)
         
-        # 检查文件是否存在
-        logger.info(f"检查文件路径: {document.file_path}")
-        if not os.path.exists(document.file_path):
-            logger.error(f"文件不存在: {document.file_path}")
+        # 检查文件是否存在 - 处理MCP文件的路径问题
+        file_path = document.file_path
+        logger.info(f"原始文件路径: {file_path}")
+        
+        # 如果是MCP创建的文件，需要添加uploads前缀
+        if file_path and file_path.startswith('mcp_created/'):
+            file_path = os.path.join('uploads', file_path)
+            logger.info(f"MCP文件路径调整为: {file_path}")
+        
+        logger.info(f"检查文件路径: {file_path}")
+        if not os.path.exists(file_path):
+            logger.error(f"文件不存在: {file_path}")
             abort(404)
         
-        logger.info(f"文件存在，准备返回Excel文件: {document.file_path}")
+        logger.info(f"文件存在，准备返回Excel文件: {file_path}")
         
         # 直接返回Excel文件
         try:
             # 使用绝对路径
-            abs_path = os.path.abspath(document.file_path)
+            abs_path = os.path.abspath(file_path)
             logger.info(f"使用绝对路径: {abs_path}")
             
             # 根据文件扩展名设置MIME类型

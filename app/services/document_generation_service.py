@@ -672,6 +672,7 @@ class DocumentGenerationService:
             from reportlab.pdfbase import pdfmetrics
             from reportlab.pdfbase.ttfonts import TTFont
             import io
+            import os
             
             # 创建内存缓冲区
             buffer = io.BytesIO()
@@ -684,12 +685,82 @@ class DocumentGenerationService:
             
             # 尝试注册中文字体
             try:
-                # 如果有中文字体文件，可以注册
-                # pdfmetrics.registerFont(TTFont('SimSun', 'SimSun.ttf'))
-                # normal_style = ParagraphStyle('Normal', fontName='SimSun', fontSize=12)
+                # 按优先级排列字体路径（优先选择Unicode支持好的字体）
+                font_paths = [
+                    # 高优先级：专门的Unicode字体
+                    '/Library/Fonts/Arial Unicode MS.ttf',  # Arial Unicode（最佳Unicode支持）
+                    'C:/Windows/Fonts/arialuni.ttf',  # Windows Arial Unicode
+                    'C:/Windows/Fonts/tahoma.ttf',  # Tahoma（较好的Unicode支持）
+                    
+                    # 中等优先级：系统中文字体TTF版本
+                    'C:/Windows/Fonts/msyh.ttf',  # 微软雅黑TTF版本
+                    'C:/Windows/Fonts/simhei.ttf',  # 黑体TTF
+                    'C:/Windows/Fonts/simsun.ttf',  # 宋体TTF
+                    
+                    # 低优先级：通用系统字体
+                    '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',  # Linux DejaVu
+                    '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',  # Linux Liberation
+                    'C:/Windows/Fonts/arial.ttf',  # Windows Arial
+                    'C:/Windows/Fonts/calibri.ttf',  # Windows Calibri
+                    
+                    # 最后尝试：macOS字体（需要特殊处理）
+                    '/System/Library/Fonts/Helvetica.ttc',  # macOS Helvetica
+                    '/System/Library/Fonts/Arial.ttf',  # macOS Arial（如果存在）
+                ]
+                
+                chinese_font_registered = False
+                for font_path in font_paths:
+                    if os.path.exists(font_path):
+                        try:
+                            font_name = 'UnicodeFont'
+                            
+                            # 只处理TTF文件，避免TTC兼容性问题
+                            if font_path.endswith('.ttf'):
+                                pdfmetrics.registerFont(TTFont(font_name, font_path))
+                            elif font_path.endswith('.ttc'):
+                                # 对于TTC文件，尝试多个子字体索引
+                                for subfont_index in [0, 1, 2]:
+                                    try:
+                                        pdfmetrics.registerFont(TTFont(font_name, font_path, subfontIndex=subfont_index))
+                                        break
+                                    except Exception:
+                                        continue
+                                else:
+                                    # 如果所有子字体都失败，跳过这个文件
+                                    raise Exception("All subfont indices failed")
+                            else:
+                                continue
+                            
+                            # 创建支持Unicode的样式
+                            normal_style = ParagraphStyle(
+                                'UnicodeNormal',
+                                fontName=font_name,
+                                fontSize=12,
+                                leading=16,
+                                spaceAfter=12,
+                                encoding='utf-8'
+                            )
+                            chinese_font_registered = True
+                            logger.info(f"成功注册Unicode字体: {font_path}")
+                            break
+                            
+                        except Exception as font_error:
+                            logger.warning(f"注册字体失败 {font_path}: {font_error}")
+                            continue
+                
+                if not chinese_font_registered:
+                    # 最后的备用方案：使用ReportLab内置字体，并进行文本预处理
+                    logger.warning("未找到可用的Unicode字体，使用内置字体并进行文本预处理")
+                    normal_style = styles['Normal']
+                    # 设置标记，后续需要对文本进行预处理
+                    normal_style._use_fallback = True
+                else:
+                    normal_style._use_fallback = False
+                    
+            except Exception as e:
+                logger.error(f"字体配置失败: {e}")
                 normal_style = styles['Normal']
-            except:
-                normal_style = styles['Normal']
+                normal_style._use_fallback = True
             
             # 分割内容为段落
             story = []
@@ -699,9 +770,39 @@ class DocumentGenerationService:
                 if para_text.strip():
                     # 处理特殊字符
                     para_text = para_text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-                    para = Paragraph(para_text, normal_style)
-                    story.append(para)
-                    story.append(Spacer(1, 12))
+                    
+                    # 如果使用备用字体，进行文本预处理
+                    if hasattr(normal_style, '_use_fallback') and normal_style._use_fallback:
+                        # 对于不支持Unicode的字体，将中文字符转换为可显示的形式
+                        processed_text = ''
+                        for char in para_text:
+                            if ord(char) > 127:  # 非ASCII字符
+                                # 保持中文字符，让ReportLab尝试处理
+                                processed_text += char
+                            else:
+                                processed_text += char
+                        para_text = processed_text
+                    
+                    try:
+                        para = Paragraph(para_text, normal_style)
+                        story.append(para)
+                        story.append(Spacer(1, 12))
+                    except Exception as para_error:
+                        # 如果段落创建失败，创建一个简单的文本段落
+                        logger.warning(f"段落创建失败，使用简化处理: {para_error}")
+                        # 使用基础样式重试
+                        simple_style = styles['Normal']
+                        try:
+                            para = Paragraph(para_text.encode('ascii', 'replace').decode('ascii'), simple_style)
+                            story.append(para)
+                            story.append(Spacer(1, 12))
+                        except Exception:
+                            # 最后的备用方案：纯文本
+                            logger.warning("使用纯文本备用方案")
+                            from reportlab.platypus import Preformatted
+                            para = Preformatted(para_text, simple_style)
+                            story.append(para)
+                            story.append(Spacer(1, 12))
             
             # 构建PDF
             doc.build(story)
