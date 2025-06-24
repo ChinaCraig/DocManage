@@ -23,7 +23,7 @@ class BaseVectorizer(ABC):
     def __init__(self):
         """初始化基础向量化器"""
         self.collection_name = "document_vectors"
-        self.dimension = 384  # all-MiniLM-L6-v2 模型的维度
+        self.dimension = None  # 改为动态检测，不再硬编码
         self.model = None
         self.is_available = False
         self.enabled = os.getenv('ENABLE_VECTOR_SERVICE', 'false').lower() == 'true'
@@ -34,6 +34,114 @@ class BaseVectorizer(ABC):
         
         if not self.enabled:
             logger.warning("Vector service is disabled by configuration")
+    
+    def _detect_model_dimension(self, model) -> int:
+        """检测模型的实际维度"""
+        try:
+            if model is None:
+                logger.warning("Model is None, using default dimension 384")
+                return 384
+            
+            # 使用测试文本获取向量维度
+            test_text = "This is a test sentence for dimension detection."
+            test_vector = model.encode(test_text, normalize_embeddings=True)
+            
+            if hasattr(test_vector, 'shape'):
+                dimension = test_vector.shape[0] if len(test_vector.shape) == 1 else test_vector.shape[-1]
+            else:
+                dimension = len(test_vector) if isinstance(test_vector, (list, tuple)) else len(test_vector.tolist())
+            
+            logger.info(f"🔍 检测到嵌入模型维度: {dimension}")
+            return dimension
+            
+        except Exception as e:
+            logger.error(f"Failed to detect model dimension: {e}")
+            logger.warning("Using default dimension 384")
+            return 384
+    
+    def _get_existing_collection_dimension(self) -> Optional[int]:
+        """获取现有集合的向量维度"""
+        try:
+            from pymilvus import Collection, utility
+            
+            if not utility.has_collection(self.collection_name):
+                return None
+            
+            collection = Collection(self.collection_name)
+            schema = collection.schema
+            
+            for field in schema.fields:
+                if field.name == "vector":
+                    dimension = field.params.get('dim')
+                    logger.info(f"📊 现有集合 '{self.collection_name}' 向量维度: {dimension}")
+                    return dimension
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Failed to get existing collection dimension: {e}")
+            return None
+    
+    def _handle_dimension_mismatch(self, model_dim: int, collection_dim: int) -> bool:
+        """处理维度不匹配问题"""
+        try:
+            from pymilvus import utility
+            
+            logger.warning(f"⚠️ 维度不匹配: 模型维度={model_dim}, 集合维度={collection_dim}")
+            logger.info(f"🔄 删除现有集合并重新创建...")
+            
+            # 删除现有集合
+            if utility.has_collection(self.collection_name):
+                utility.drop_collection(self.collection_name)
+                logger.info(f"✅ 已删除集合 '{self.collection_name}'")
+            
+            # 更新维度为模型实际维度
+            self.dimension = model_dim
+            
+            # 重新创建集合
+            return self._create_collection_with_dimension(model_dim)
+            
+        except Exception as e:
+            logger.error(f"Failed to handle dimension mismatch: {e}")
+            return False
+    
+    def _create_collection_with_dimension(self, dimension: int) -> bool:
+        """使用指定维度创建集合"""
+        try:
+            from pymilvus import Collection, FieldSchema, CollectionSchema, DataType
+            
+            logger.info(f"🚀 创建新集合，维度: {dimension}")
+            
+            # 定义字段
+            fields = [
+                FieldSchema(name="id", dtype=DataType.INT64, is_primary=True, auto_id=True),
+                FieldSchema(name="document_id", dtype=DataType.VARCHAR, max_length=100),
+                FieldSchema(name="chunk_id", dtype=DataType.VARCHAR, max_length=100),
+                FieldSchema(name="text", dtype=DataType.VARCHAR, max_length=65535),
+                FieldSchema(name="vector", dtype=DataType.FLOAT_VECTOR, dim=dimension)
+            ]
+            
+            # 创建集合架构
+            schema = CollectionSchema(fields, f"Document vectors collection with {dimension}D embeddings")
+            
+            # 创建集合
+            collection = Collection(self.collection_name, schema)
+            
+            # 创建索引
+            index_params = {
+                "metric_type": "COSINE",
+                "index_type": "IVF_FLAT",
+                "params": {"nlist": 128}
+            }
+            
+            collection.create_index("vector", index_params)
+            logger.info(f"✅ 创建集合 '{self.collection_name}' 成功，维度: {dimension}")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to create collection with dimension {dimension}: {e}")
+            return False
     
     def _load_embedding_model(self, model_name: str = 'all-MiniLM-L6-v2'):
         """安全地加载嵌入模型（单例模式）"""
@@ -79,6 +187,7 @@ class BaseVectorizer(ABC):
             model_name = model_name or os.getenv('EMBEDDING_MODEL', 'all-MiniLM-L6-v2')
             
             logger.info(f"Initializing vector service - connecting to {host}:{port}")
+            logger.info(f"🤖 使用嵌入模型: {model_name}")
             
             from pymilvus import connections, utility
             
@@ -102,16 +211,25 @@ class BaseVectorizer(ABC):
             if not connections.has_connection("default"):
                 raise Exception("Failed to establish Milvus connection")
             
-            # 初始化集合
-            self._initialize_collection()
-            
-            # 初始化模型（使用新的安全加载方法）
+            # 初始化模型（先加载模型再初始化集合）
             if not self.model:
                 self.model = self._load_embedding_model(model_name)
-                if self.model:
-                    logger.info("✅ Vector service initialized successfully")
+                if not self.model:
+                    logger.warning("⚠️ 未能加载嵌入模型，将使用模拟向量")
+                    self.dimension = 384  # 使用默认维度
                 else:
-                    logger.warning("⚠️ Vector service initialized without embedding model (will use mock vectors)")
+                    # 检测模型维度
+                    self.dimension = self._detect_model_dimension(self.model)
+                    logger.info(f"✅ 嵌入模型加载成功，维度: {self.dimension}")
+            
+            # 智能初始化集合（处理维度匹配）
+            collection_initialized = self._initialize_collection_smart()
+            
+            if collection_initialized:
+                logger.info("✅ Vector service initialized successfully")
+            else:
+                logger.error("❌ Collection initialization failed")
+                return False
                     
             self.is_available = True
             return True
@@ -121,8 +239,39 @@ class BaseVectorizer(ABC):
             self.is_available = False
             return False
     
+    def _initialize_collection_smart(self):
+        """智能初始化Milvus集合，处理维度匹配问题"""
+        try:
+            from pymilvus import utility
+            
+            # 检查集合是否存在
+            if utility.has_collection(self.collection_name):
+                # 获取现有集合的维度
+                existing_dim = self._get_existing_collection_dimension()
+                
+                if existing_dim is None:
+                    logger.error("⚠️ 无法获取现有集合的维度信息")
+                    return False
+                
+                # 检查维度是否匹配
+                if existing_dim == self.dimension:
+                    logger.info(f"✅ 集合 '{self.collection_name}' 已存在，维度匹配: {existing_dim}")
+                    return True
+                else:
+                    # 维度不匹配，处理冲突
+                    logger.warning(f"⚠️ 维度不匹配: 现有集合={existing_dim}, 模型={self.dimension}")
+                    return self._handle_dimension_mismatch(self.dimension, existing_dim)
+            else:
+                # 集合不存在，创建新集合
+                logger.info(f"📦 集合 '{self.collection_name}' 不存在，创建新集合...")
+                return self._create_collection_with_dimension(self.dimension)
+            
+        except Exception as e:
+            logger.error(f"Failed to smart initialize collection: {e}")
+            return False
+    
     def _initialize_collection(self):
-        """初始化Milvus集合"""
+        """初始化Milvus集合（保留原方法以兼容性）"""
         try:
             from pymilvus import Collection, FieldSchema, CollectionSchema, DataType, utility
             
@@ -131,13 +280,16 @@ class BaseVectorizer(ABC):
                 logger.info(f"Collection '{self.collection_name}' already exists")
                 return True
             
+            # 使用当前维度（如果为None则使用默认值）
+            dimension = self.dimension or 384
+            
             # 定义字段
             fields = [
                 FieldSchema(name="id", dtype=DataType.INT64, is_primary=True, auto_id=True),
                 FieldSchema(name="document_id", dtype=DataType.VARCHAR, max_length=100),
                 FieldSchema(name="chunk_id", dtype=DataType.VARCHAR, max_length=100),
                 FieldSchema(name="text", dtype=DataType.VARCHAR, max_length=65535),
-                FieldSchema(name="vector", dtype=DataType.FLOAT_VECTOR, dim=self.dimension)
+                FieldSchema(name="vector", dtype=DataType.FLOAT_VECTOR, dim=dimension)
             ]
             
             # 创建集合架构
@@ -169,16 +321,27 @@ class BaseVectorizer(ABC):
         # 首先检查是否有本地模型实例
         current_model = self.model or _model_instance
         
+        # 确保dimension有值
+        dimension = self.dimension or 384
+        
         if not self.is_available or not current_model:
             logger.warning(f"Text encoding skipped - service available: {self.is_available}, model loaded: {current_model is not None}")
             # 返回模拟向量
-            return [0.0] * self.dimension
+            return [0.0] * dimension
             
         try:
             logger.debug(f"Encoding text with model: {type(current_model).__name__}")
             # 使用sentence-transformers编码文本
             vector = current_model.encode(text, normalize_embeddings=True)
             result_vector = vector.tolist()
+            
+            # 验证向量维度是否正确
+            actual_dim = len(result_vector)
+            if actual_dim != dimension:
+                logger.warning(f"⚠️ 向量维度不匹配: 期望={dimension}, 实际={actual_dim}")
+                # 更新维度设置
+                self.dimension = actual_dim
+                logger.info(f"🔄 已更新dimension为: {actual_dim}")
             
             # 验证向量是否为零向量
             vector_sum = sum(abs(v) for v in result_vector)
@@ -187,14 +350,14 @@ class BaseVectorizer(ABC):
                 logger.error(f"Model type: {type(current_model)}")
                 logger.error(f"Vector shape: {vector.shape if hasattr(vector, 'shape') else 'unknown'}")
             else:
-                logger.info(f"✅ Generated valid vector, sum: {vector_sum:.6f}, range: [{min(result_vector):.4f}, {max(result_vector):.4f}]")
+                logger.debug(f"✅ Generated valid vector, dim: {actual_dim}, sum: {vector_sum:.6f}, range: [{min(result_vector):.4f}, {max(result_vector):.4f}]")
             
             return result_vector
         except Exception as e:
             logger.error(f"Failed to encode text: {e}")
             logger.error(f"Model instance: {current_model}")
             logger.error(f"Text sample: {text[:100]}...")
-            return [0.0] * self.dimension
+            return [0.0] * dimension
     
     def insert_vectors(self, vectors_data: List[Dict[str, Any]]) -> bool:
         """插入向量数据到Milvus"""
