@@ -8,6 +8,8 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
     <!-- 标准化消息组件样式 -->
     <link href="/static/css/message_components.css" rel="stylesheet">
+    <!-- 认证管理组件 -->
+    <script src="/static/js/auth_manager.js"></script>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -49,6 +51,74 @@
             display: flex;
             gap: 20px;
             font-size: 14px;
+        }
+
+        .user-menu {
+            position: relative;
+            margin-left: 20px;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 15px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .user-info:hover {
+            background: rgba(255,255,255,0.2);
+        }
+
+        .user-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .user-dropdown {
+            position: absolute;
+            top: 100%;
+            right: 0;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+            min-width: 200px;
+            z-index: 1000;
+            display: none;
+            padding: 8px 0;
+        }
+
+        .user-dropdown.show {
+            display: block;
+        }
+
+        .dropdown-item {
+            padding: 10px 16px;
+            color: #333;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: background 0.2s ease;
+        }
+
+        .dropdown-item:hover {
+            background: #f8f9fa;
+            color: #333;
+        }
+
+        .dropdown-divider {
+            height: 1px;
+            background: #e9ecef;
+            margin: 8px 0;
         }
 
         .stat-item {
@@ -2963,6 +3033,33 @@
                 <span>向量: <strong id="totalVectors">0</strong></span>
             </div>
         </div>
+
+        <!-- 用户菜单 -->
+        <div class="user-menu" id="userMenu" style="display: none;">
+            <div class="user-info" onclick="toggleUserDropdown()">
+                <div class="user-avatar">
+                    <i class="bi bi-person"></i>
+                </div>
+                <span id="userDisplayName">用户</span>
+                <i class="bi bi-chevron-down"></i>
+            </div>
+            
+            <div class="user-dropdown" id="userDropdown">
+                <a href="#" class="dropdown-item" onclick="showUserProfile()">
+                    <i class="bi bi-person-circle"></i>
+                    个人资料
+                </a>
+                <a href="#" class="dropdown-item" onclick="showChangePassword()">
+                    <i class="bi bi-key"></i>
+                    修改密码
+                </a>
+                <div class="dropdown-divider"></div>
+                <a href="#" class="dropdown-item" onclick="handleLogout()">
+                    <i class="bi bi-box-arrow-right"></i>
+                    退出登录
+                </a>
+            </div>
+        </div>
     </div>
 
     <div class="container-fluid">
@@ -3641,5 +3738,269 @@
     <!-- 标准化消息组件 -->
     <script src="/js/message_components.js"></script>
     <script src="/js/integrated_app.js?v=2025061003"></script>
+    
+    <!-- 认证管理相关脚本 -->
+    <script>
+        // 用户认证相关功能
+        let userDropdownVisible = false;
+
+        // 切换用户下拉菜单
+        function toggleUserDropdown() {
+            const dropdown = document.getElementById('userDropdown');
+            userDropdownVisible = !userDropdownVisible;
+            
+            if (userDropdownVisible) {
+                dropdown.classList.add('show');
+            } else {
+                dropdown.classList.remove('show');
+            }
+        }
+
+        // 点击外部关闭下拉菜单
+        document.addEventListener('click', function(event) {
+            const userMenu = document.getElementById('userMenu');
+            if (userMenu && !userMenu.contains(event.target)) {
+                document.getElementById('userDropdown').classList.remove('show');
+                userDropdownVisible = false;
+            }
+        });
+
+        // 显示用户资料对话框
+        function showUserProfile() {
+            if (!window.authManager || !window.authManager.currentUser) return;
+            
+            const user = window.authManager.currentUser;
+            const profileHtml = `
+                <div class="modal fade" id="userProfileModal" tabindex="-1">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">
+                                    <i class="bi bi-person-circle"></i> 个人资料
+                                </h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="row">
+                                    <div class="col-sm-4"><strong>用户名:</strong></div>
+                                    <div class="col-sm-8">${user.username || '未设置'}</div>
+                                </div>
+                                <div class="row mt-2">
+                                    <div class="col-sm-4"><strong>真实姓名:</strong></div>
+                                    <div class="col-sm-8">${user.real_name || '未设置'}</div>
+                                </div>
+                                <div class="row mt-2">
+                                    <div class="col-sm-4"><strong>邮箱:</strong></div>
+                                    <div class="col-sm-8">${user.email || '未设置'}</div>
+                                </div>
+                                <div class="row mt-2">
+                                    <div class="col-sm-4"><strong>手机:</strong></div>
+                                    <div class="col-sm-8">${user.phone || '未设置'}</div>
+                                </div>
+                                <div class="row mt-2">
+                                    <div class="col-sm-4"><strong>部门:</strong></div>
+                                    <div class="col-sm-8">${user.department || '未设置'}</div>
+                                </div>
+                                <div class="row mt-2">
+                                    <div class="col-sm-4"><strong>职位:</strong></div>
+                                    <div class="col-sm-8">${user.position || '未设置'}</div>
+                                </div>
+                                <div class="row mt-2">
+                                    <div class="col-sm-4"><strong>用户类型:</strong></div>
+                                    <div class="col-sm-8">
+                                        <span class="badge ${user.is_admin ? 'bg-danger' : 'bg-primary'}">
+                                            ${user.is_admin ? '管理员' : '普通用户'}
+                                        </span>
+                                    </div>
+                                </div>
+                                <div class="row mt-2">
+                                    <div class="col-sm-4"><strong>最后登录:</strong></div>
+                                    <div class="col-sm-8">${user.last_login_at ? new Date(user.last_login_at).toLocaleString() : '首次登录'}</div>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // 移除旧的模态框
+            const oldModal = document.getElementById('userProfileModal');
+            if (oldModal) oldModal.remove();
+            
+            // 添加新的模态框
+            document.body.insertAdjacentHTML('beforeend', profileHtml);
+            
+            // 显示模态框
+            const modal = new bootstrap.Modal(document.getElementById('userProfileModal'));
+            modal.show();
+            
+            toggleUserDropdown(); // 关闭下拉菜单
+        }
+
+        // 显示修改密码对话框
+        function showChangePassword() {
+            const passwordHtml = `
+                <div class="modal fade" id="changePasswordModal" tabindex="-1">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">
+                                    <i class="bi bi-key"></i> 修改密码
+                                </h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <form id="changePasswordForm">
+                                    <div class="mb-3">
+                                        <label for="oldPassword" class="form-label">当前密码</label>
+                                        <input type="password" class="form-control" id="oldPassword" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="newPassword" class="form-label">新密码</label>
+                                        <input type="password" class="form-control" id="newPassword" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="confirmPassword" class="form-label">确认新密码</label>
+                                        <input type="password" class="form-control" id="confirmPassword" required>
+                                    </div>
+                                </form>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                                <button type="button" class="btn btn-primary" onclick="handleChangePassword()">修改密码</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // 移除旧的模态框
+            const oldModal = document.getElementById('changePasswordModal');
+            if (oldModal) oldModal.remove();
+            
+            // 添加新的模态框
+            document.body.insertAdjacentHTML('beforeend', passwordHtml);
+            
+            // 显示模态框
+            const modal = new bootstrap.Modal(document.getElementById('changePasswordModal'));
+            modal.show();
+            
+            toggleUserDropdown(); // 关闭下拉菜单
+        }
+
+        // 处理修改密码
+        async function handleChangePassword() {
+            const oldPassword = document.getElementById('oldPassword').value;
+            const newPassword = document.getElementById('newPassword').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
+            
+            if (!oldPassword || !newPassword || !confirmPassword) {
+                showMessage('所有字段都必须填写', 'error');
+                return;
+            }
+            
+            if (newPassword !== confirmPassword) {
+                showMessage('新密码和确认密码不匹配', 'error');
+                return;
+            }
+            
+            if (newPassword.length < 6) {
+                showMessage('新密码长度至少6位', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/auth/change-password', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        old_password: oldPassword,
+                        new_password: newPassword
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showMessage('密码修改成功', 'success');
+                    bootstrap.Modal.getInstance(document.getElementById('changePasswordModal')).hide();
+                } else {
+                    showMessage(result.message || '密码修改失败', 'error');
+                }
+            } catch (error) {
+                console.error('修改密码失败:', error);
+                showMessage('网络错误，请稍后重试', 'error');
+            }
+        }
+
+        // 处理用户登出
+        async function handleLogout() {
+            if (confirm('确定要退出登录吗？')) {
+                try {
+                    const response = await fetch('/api/auth/logout', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        }
+                    });
+                    
+                    showMessage('已成功退出登录', 'info');
+                    // 延迟跳转到登录页面
+                    setTimeout(() => {
+                        window.location.href = '/api/auth/login-page';
+                    }, 1000);
+                } catch (error) {
+                    console.error('登出失败:', error);
+                    // 即使服务器返回失败，也跳转到登录页面
+                    window.location.href = '/api/auth/login-page';
+                }
+            }
+            toggleUserDropdown(); // 关闭下拉菜单
+        }
+
+        // 更新用户界面显示
+        function updateUserInterface(authData) {
+            const userMenu = document.getElementById('userMenu');
+            
+            if (authData && authData.auth_enabled) {
+                if (authData.authenticated && authData.user) {
+                    // 显示用户菜单
+                    userMenu.style.display = 'block';
+                    document.getElementById('userDisplayName').textContent = 
+                        authData.user.real_name || authData.user.username;
+                } else {
+                    // 隐藏用户菜单
+                    userMenu.style.display = 'none';
+                }
+            } else {
+                // 认证未启用，隐藏用户菜单
+                userMenu.style.display = 'none';
+            }
+        }
+
+        // 检查认证状态
+        async function checkAuthStatus() {
+            try {
+                const response = await fetch('/api/auth/check-auth');
+                const data = await response.json();
+                
+                if (data.success) {
+                    updateUserInterface(data);
+                }
+            } catch (error) {
+                console.error('检查认证状态失败:', error);
+            }
+        }
+
+        // 页面加载完成后检查认证状态
+        document.addEventListener('DOMContentLoaded', function() {
+            checkAuthStatus();
+        });
+    </script>
 </body>
 </html> 

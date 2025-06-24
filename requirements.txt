@@ -1,6 +1,7 @@
 Flask==2.3.3
 Flask-CORS==4.0.0
 Flask-SQLAlchemy==3.0.5
+Flask-Login==0.6.3
 PyMySQL==1.1.0
 pymilvus==2.5.10
 

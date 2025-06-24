@@ -74,6 +74,7 @@ def create_app(config_name=None):
     from app.routes.llm_routes import llm_bp
     from app.routes.mcp_v2_routes import mcp_v2_bp
     from app.routes.intent_routes import intent_bp
+    from app.routes.auth_routes import auth_bp
     
     app.register_blueprint(document_bp, url_prefix='/api/documents')
     app.register_blueprint(search_bp, url_prefix='/api/search')
@@ -86,15 +87,35 @@ def create_app(config_name=None):
     app.register_blueprint(mcp_v2_bp)  # 完整功能的MCP v2路由
     app.register_blueprint(intent_bp, url_prefix='/api/intent')
     app.register_blueprint(prompt_routes)
+    app.register_blueprint(auth_bp)  # 用户认证路由
     
-    # 注册主页路由 - 重定向到语义搜索
+    # 注册主页路由 - 强制认证检查
     @app.route('/')
     def index():
+        # 强制检查用户认证（默认启用认证以确保安全）
+        from app.services.auth_service import AuthService
+        from flask import redirect, url_for
+        
+        # 检查用户是否已登录
+        current_user = AuthService.get_current_user()
+        if not current_user:
+            # 未登录，跳转到登录页面
+            return redirect(url_for('auth.login_page'))
+        
+        # 已登录，显示主页
         return app.send_static_file('semantic_search.html')
     
-    # 语义搜索页面路由（保持兼容性）
+    # 语义搜索页面路由（保持兼容性）- 需要认证
     @app.route('/semantic-search')
     def semantic_search_page():
+        from app.services.auth_service import AuthService
+        from flask import redirect, url_for
+        
+        # 检查用户是否已登录
+        current_user = AuthService.get_current_user()
+        if not current_user:
+            return redirect(url_for('auth.login_page'))
+        
         return app.send_static_file('semantic_search.html')
     
     # LLM功能测试页面

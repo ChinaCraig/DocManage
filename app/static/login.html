@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录 - 智能文档管理系统</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .login-container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+            padding: 40px;
+            width: 100%;
+            max-width: 420px;
+            margin: 20px;
+        }
+
+        .login-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .login-header h1 {
+            color: #333;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+
+        .login-header p {
+            color: #666;
+            margin-bottom: 0;
+        }
+
+        .form-floating {
+            margin-bottom: 20px;
+        }
+
+        .form-control {
+            border: 2px solid #e9ecef;
+            border-radius: 12px;
+            padding: 15px;
+            font-size: 16px;
+            transition: all 0.3s ease;
+        }
+
+        .form-control:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+        }
+
+        .btn-login {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 12px;
+            padding: 15px;
+            font-size: 16px;
+            font-weight: 600;
+            width: 100%;
+            margin-top: 10px;
+            transition: all 0.3s ease;
+        }
+
+        .btn-login:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-login:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .form-check {
+            margin: 20px 0;
+        }
+
+        .form-check-input:checked {
+            background-color: #667eea;
+            border-color: #667eea;
+        }
+
+        .alert {
+            border-radius: 12px;
+            margin-bottom: 20px;
+        }
+
+        .loading-spinner {
+            display: none;
+            margin-right: 8px;
+        }
+
+        .login-footer {
+            text-align: center;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e9ecef;
+        }
+
+        .login-footer a {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .login-footer a:hover {
+            text-decoration: underline;
+        }
+
+        .system-info {
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 15px;
+            padding: 20px;
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        .system-info h5 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+
+        .system-info p {
+            color: #666;
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+
+        @media (max-width: 480px) {
+            .login-container {
+                padding: 30px 20px;
+                margin: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-header">
+            <h1><i class="bi bi-shield-lock"></i> 系统登录</h1>
+            <p>智能文档管理与语义检索系统</p>
+        </div>
+
+        <div id="alertContainer"></div>
+
+        <form id="loginForm">
+            <div class="form-floating">
+                <input type="text" class="form-control" id="username" name="username" placeholder="用户名" required>
+                <label for="username"><i class="bi bi-person"></i> 用户名或邮箱</label>
+            </div>
+
+            <div class="form-floating">
+                <input type="password" class="form-control" id="password" name="password" placeholder="密码" required>
+                <label for="password"><i class="bi bi-lock"></i> 密码</label>
+            </div>
+
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="rememberMe" name="remember_me">
+                <label class="form-check-label" for="rememberMe">
+                    记住我（7天内免登录）
+                </label>
+            </div>
+
+            <button type="submit" class="btn btn-login text-white" id="loginBtn">
+                <span class="loading-spinner spinner-border spinner-border-sm" role="status"></span>
+                <span class="login-text">登录</span>
+            </button>
+        </form>
+
+        <div class="login-footer">
+            <p>还没有账户？<a href="/api/auth/register-page">立即注册</a></p>
+            <p><a href="/">返回首页</a></p>
+        </div>
+    </div>
+
+    <div class="system-info">
+        <h5><i class="bi bi-info-circle"></i> 系统信息</h5>
+        <p><strong>默认管理员账户：</strong>admin</p>
+        <p><strong>默认密码：</strong>admin123</p>
+        <p><strong>系统版本：</strong>v1.0.0</p>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        class LoginManager {
+            constructor() {
+                this.form = document.getElementById('loginForm');
+                this.submitBtn = document.getElementById('loginBtn');
+                this.spinner = document.querySelector('.loading-spinner');
+                this.btnText = document.querySelector('.login-text');
+                
+                this.init();
+            }
+
+            init() {
+                this.form.addEventListener('submit', (e) => this.handleSubmit(e));
+                
+                // 检查是否已登录
+                this.checkAuthStatus();
+            }
+
+            async checkAuthStatus() {
+                try {
+                    const response = await fetch('/api/auth/check-auth');
+                    const data = await response.json();
+                    
+                    if (data.success && data.authenticated) {
+                        // 已登录，跳转到主页
+                        window.location.href = '/';
+                    }
+                } catch (error) {
+                    console.error('检查认证状态失败:', error);
+                }
+            }
+
+            async handleSubmit(event) {
+                event.preventDefault();
+                
+                const formData = new FormData(this.form);
+                const loginData = {
+                    username: formData.get('username').trim(),
+                    password: formData.get('password'),
+                    remember_me: formData.get('remember_me') === 'on'
+                };
+
+                // 基本验证
+                if (!loginData.username || !loginData.password) {
+                    this.showAlert('请输入用户名和密码', 'danger');
+                    return;
+                }
+
+                // 显示加载状态
+                this.setLoading(true);
+                this.clearAlerts();
+
+                try {
+                    const response = await fetch('/api/auth/login', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(loginData)
+                    });
+
+                    const result = await response.json();
+
+                    if (result.success) {
+                        this.showAlert('登录成功，正在跳转...', 'success');
+                        
+                        // 延迟跳转，让用户看到成功消息
+                        setTimeout(() => {
+                            window.location.href = '/';
+                        }, 1000);
+                    } else {
+                        this.showAlert(result.message || '登录失败', 'danger');
+                    }
+                } catch (error) {
+                    console.error('登录请求失败:', error);
+                    this.showAlert('网络错误，请稍后重试', 'danger');
+                } finally {
+                    this.setLoading(false);
+                }
+            }
+
+            setLoading(loading) {
+                this.submitBtn.disabled = loading;
+                this.spinner.style.display = loading ? 'inline-block' : 'none';
+                this.btnText.textContent = loading ? '登录中...' : '登录';
+            }
+
+            showAlert(message, type = 'info') {
+                const alertContainer = document.getElementById('alertContainer');
+                const alertId = 'alert-' + Date.now();
+                
+                const alertHTML = `
+                    <div class="alert alert-${type} alert-dismissible fade show" role="alert" id="${alertId}">
+                        <i class="bi bi-${this.getAlertIcon(type)}"></i>
+                        ${message}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                `;
+                
+                alertContainer.insertAdjacentHTML('beforeend', alertHTML);
+                
+                // 自动消失
+                setTimeout(() => {
+                    const alertElement = document.getElementById(alertId);
+                    if (alertElement) {
+                        const bsAlert = new bootstrap.Alert(alertElement);
+                        bsAlert.close();
+                    }
+                }, 5000);
+            }
+
+            getAlertIcon(type) {
+                const icons = {
+                    'success': 'check-circle',
+                    'danger': 'exclamation-triangle',
+                    'warning': 'exclamation-circle',
+                    'info': 'info-circle'
+                };
+                return icons[type] || 'info-circle';
+            }
+
+            clearAlerts() {
+                document.getElementById('alertContainer').innerHTML = '';
+            }
+        }
+
+        // 初始化登录管理器
+        document.addEventListener('DOMContentLoaded', () => {
+            new LoginManager();
+        });
+    </script>
+</body>
+</html> 

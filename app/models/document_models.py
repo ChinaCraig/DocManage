@@ -17,6 +17,7 @@ class DocumentNode(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     created_by = db.Column(db.String(100), default='system', comment='创建人')
+    user_id = db.Column(db.BigInteger, nullable=True, comment='所属用户ID')  # 用户认证关联字段
     is_deleted = db.Column(db.Boolean, default=False, comment='是否删除')
     
     # 向量化相关字段
