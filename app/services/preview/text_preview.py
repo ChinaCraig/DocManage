@@ -66,35 +66,72 @@ class TextPreviewService(BasePreviewService):
             raise
     
     def _extract_mcp_content(self, file_path, document_id):
-        """从数据库提取MCP创建的文件内容"""
+        """提取MCP创建的文件内容"""
         try:
+            logger.info(f"🔍 处理MCP文件: {file_path}")
+            
             # 导入模型
             from app.models.document_models import DocumentNode, DocumentContent
             from app import db
             
-            # 如果有document_id，直接查询
             if document_id:
-                # 查找文档内容
-                content_record = db.session.query(DocumentContent).filter_by(
-                    document_id=document_id
+                # 使用document_id查找
+                document = db.session.query(DocumentNode).filter_by(
+                    id=document_id,
+                    is_deleted=False
                 ).first()
-                
-                if content_record and content_record.content_text:
-                    content = content_record.content_text
-                else:
-                    # 如果没有内容记录，返回空内容
-                    content = ""
             else:
-                # 通过file_path查找文档
+                # 使用file_path查找
                 document = db.session.query(DocumentNode).filter_by(
                     file_path=file_path,
                     is_deleted=False
                 ).first()
                 
-                if not document:
-                    raise FileNotFoundError(f"MCP文件不存在: {file_path}")
+            if not document:
+                raise FileNotFoundError(f"MCP文件不存在: {file_path}")
+            
+            # 检查虚拟文件是否存在于文件系统中
+            import os
+            full_virtual_path = os.path.join('uploads', file_path)
+            content = ""
+            
+            if os.path.exists(full_virtual_path):
+                # 文件存在于文件系统中，尝试读取
+                logger.info(f"📁 虚拟文件存在于文件系统: {full_virtual_path}")
                 
-                # 查找文档内容
+                file_ext = document.file_type.lower()
+                if file_ext in ['pdf', 'xlsx', 'docx']:
+                    # 对于二进制格式，从数据库获取文本内容
+                    content_record = db.session.query(DocumentContent).filter_by(
+                        document_id=document.id
+                    ).first()
+                    
+                    if content_record and content_record.content_text:
+                        content = content_record.content_text
+                    else:
+                        content = f"[{file_ext.upper()}文档] 原始内容请下载文件查看"
+                        
+                    # 添加下载链接信息
+                    content += f"\n\n💾 文件已生成为 {file_ext.upper()} 格式，可通过下载功能获取完整文档。"
+                    
+                else:
+                    # 文本格式，直接读取文件
+                    try:
+                        with open(full_virtual_path, 'r', encoding='utf-8') as f:
+                            content = f.read()
+                    except UnicodeDecodeError:
+                        # 尝试其他编码
+                        for encoding in ['gbk', 'gb2312', 'latin1']:
+                            try:
+                                with open(full_virtual_path, 'r', encoding=encoding) as f:
+                                    content = f.read()
+                                break
+                            except:
+                                continue
+            else:
+                # 文件不存在于文件系统中，从数据库读取
+                logger.info(f"💾 从数据库读取MCP文件内容: {file_path}")
+                
                 content_record = db.session.query(DocumentContent).filter_by(
                     document_id=document.id
                 ).first()
@@ -116,21 +153,32 @@ class TextPreviewService(BasePreviewService):
             words = len(content.split()) if content else 0
             chars = len(content)
             
+            # 根据文件类型设置描述
+            file_type_desc = {
+                'txt': '文本文档',
+                'pdf': 'PDF文档',
+                'xlsx': 'Excel工作簿',
+                'docx': 'Word文档'
+            }.get(document.file_type, '生成文档')
+            
             content_data = {
                 'type': 'text',
                 'content': content,
-                'encoding': 'utf-8',  # MCP创建的文件默认使用UTF-8
+                'encoding': 'utf-8',
                 'is_truncated': is_truncated,
                 'metadata': {
                     'lines': lines,
                     'words': words,
                     'characters': chars,
-                    'file_type': self._get_file_type_description(file_path),
-                    'source': 'mcp_created'
+                    'file_type': file_type_desc,
+                    'source': 'mcp_created',
+                    'format': document.file_type,
+                    'has_binary_file': os.path.exists(full_virtual_path),
+                    'mime_type': document.mime_type
                 }
             }
             
-            logger.info(f"✅ MCP文件内容提取成功: {file_path}, 字符数: {chars}")
+            logger.info(f"✅ MCP文件内容提取成功: {file_path}, 格式: {document.file_type}, 字符数: {chars}")
             return content_data
             
         except Exception as e:

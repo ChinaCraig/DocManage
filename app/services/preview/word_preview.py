@@ -25,8 +25,14 @@ class WordPreviewService(BasePreviewService):
         self.temp_images_dir = os.path.join('app', 'static', 'temp_images')
         os.makedirs(self.temp_images_dir, exist_ok=True)
     
-    def extract_content(self, file_path):
+    def extract_content(self, file_path, document_id=None):
         """提取Word文档内容"""
+        
+        # 检查是否为MCP创建的虚拟文件
+        if file_path and file_path.startswith('mcp_created/'):
+            return self._extract_mcp_content(file_path, document_id)
+        
+        # 普通文件处理
         if not self.validate_file(file_path):
             raise FileNotFoundError(f"文件不存在或无法读取: {file_path}")
         
@@ -38,6 +44,103 @@ class WordPreviewService(BasePreviewService):
             return self._extract_doc_content(file_path)
         else:
             raise ValueError(f"不支持的Word文档格式: {file_ext}")
+    
+    def _extract_mcp_content(self, file_path, document_id):
+        """提取MCP创建的Word文件内容"""
+        try:
+            logger.info(f"🔍 处理MCP Word文件: {file_path}")
+            
+            # 导入模型
+            from app.models.document_models import DocumentNode, DocumentContent
+            from app import db
+            
+            if document_id:
+                # 使用document_id查找
+                document = db.session.query(DocumentNode).filter_by(
+                    id=document_id,
+                    is_deleted=False
+                ).first()
+            else:
+                # 使用file_path查找
+                document = db.session.query(DocumentNode).filter_by(
+                    file_path=file_path,
+                    is_deleted=False
+                ).first()
+                
+            if not document:
+                raise FileNotFoundError(f"MCP Word文件不存在: {file_path}")
+            
+            # 检查虚拟文件是否存在于文件系统中
+            import os
+            full_virtual_path = os.path.join('uploads', file_path)
+            
+            if os.path.exists(full_virtual_path):
+                # 文件存在于文件系统中，使用实际Word文件处理
+                logger.info(f"📁 虚拟Word文件存在于文件系统: {full_virtual_path}")
+                
+                try:
+                    file_ext = os.path.splitext(full_virtual_path)[1].lower()
+                    if file_ext == '.docx':
+                        return self._extract_docx_content(full_virtual_path)
+                    elif file_ext == '.doc':
+                        return self._extract_doc_content(full_virtual_path)
+                    else:
+                        raise ValueError(f"不支持的Word格式: {file_ext}")
+                        
+                except Exception as e:
+                    logger.warning(f"处理虚拟Word文件失败，降级到文本模式: {e}")
+                    # 降级到文本内容处理
+                    pass
+            
+            # 从数据库获取文本内容（降级处理）
+            logger.info(f"💾 从数据库读取MCP Word文件内容: {file_path}")
+            
+            content_record = db.session.query(DocumentContent).filter_by(
+                document_id=document.id
+            ).first()
+            
+            if content_record and content_record.content_text:
+                # 将文本内容转换为Word预览格式
+                text_content = content_record.content_text
+                
+                # 模拟Word文档结构
+                content_data = {
+                    'type': 'word',
+                    'content': text_content,
+                    'images': [],
+                    'tables': [],
+                    'metadata': {
+                        'paragraphs': len([p for p in text_content.split('\n\n') if p.strip()]),
+                        'words': len(text_content.split()),
+                        'characters': len(text_content),
+                        'source': 'mcp_created',
+                        'format': 'docx',
+                        'note': '📄 Word文档已生成，可通过下载功能获取完整文档文件'
+                    }
+                }
+                
+                logger.info(f"✅ MCP Word文件内容提取成功: {file_path}")
+                return content_data
+            else:
+                # 返回空内容
+                return {
+                    'type': 'word',
+                    'content': '[无内容]',
+                    'images': [],
+                    'tables': [],
+                    'metadata': {
+                        'paragraphs': 0,
+                        'words': 0,
+                        'characters': 0,
+                        'source': 'mcp_created',
+                        'format': 'docx',
+                        'error': '无法获取文件内容'
+                    }
+                }
+            
+        except Exception as e:
+            logger.error(f"❌ MCP Word文件内容提取失败: {file_path}, 错误: {str(e)}")
+            raise
     
     def _extract_docx_content(self, file_path):
         """提取DOCX文档内容"""

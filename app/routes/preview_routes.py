@@ -28,8 +28,8 @@ def preview_pdf(doc_id):
         # 获取预览服务
         preview_service = PreviewServiceFactory.get_service('pdf')
         
-        # 提取文档内容
-        content_data = preview_service.extract_content(document.file_path)
+        # 提取文档内容，对于MCP创建的文件传递document_id
+        content_data = preview_service.extract_content(document.file_path, document.id)
         
         return jsonify({
             'success': True,
@@ -118,8 +118,8 @@ def preview_word(doc_id):
         # 获取预览服务
         preview_service = PreviewServiceFactory.get_service('word')
         
-        # 提取文档内容
-        content_data = preview_service.extract_content(document.file_path)
+        # 提取文档内容，对于MCP创建的文件传递document_id
+        content_data = preview_service.extract_content(document.file_path, document.id)
         
         return jsonify({
             'success': True,
@@ -214,8 +214,8 @@ def preview_excel(doc_id):
         # 获取预览服务
         preview_service = PreviewServiceFactory.get_service('excel')
         
-        # 提取文档内容
-        content_data = preview_service.extract_content(document.file_path)
+        # 提取文档内容，对于MCP创建的文件传递document_id
+        content_data = preview_service.extract_content(document.file_path, document.id)
         
         return jsonify({
             'success': True,

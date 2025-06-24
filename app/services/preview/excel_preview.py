@@ -15,8 +15,14 @@ class ExcelPreviewService(BasePreviewService):
         super().__init__()
         self.supported_formats = ['xlsx', 'xls']
     
-    def extract_content(self, file_path):
+    def extract_content(self, file_path, document_id=None):
         """提取Excel文档内容"""
+        
+        # 检查是否为MCP创建的虚拟文件
+        if file_path and file_path.startswith('mcp_created/'):
+            return self._extract_mcp_content(file_path, document_id)
+        
+        # 普通文件处理
         if not self.validate_file(file_path):
             raise FileNotFoundError(f"文件不存在或无法读取: {file_path}")
         
@@ -38,6 +44,105 @@ class ExcelPreviewService(BasePreviewService):
             
         except Exception as e:
             logger.error(f"❌ Excel内容提取失败: {file_path}, 错误: {str(e)}")
+            raise
+    
+    def _extract_mcp_content(self, file_path, document_id):
+        """提取MCP创建的Excel文件内容"""
+        try:
+            logger.info(f"🔍 处理MCP Excel文件: {file_path}")
+            
+            # 导入模型
+            from app.models.document_models import DocumentNode, DocumentContent
+            from app import db
+            
+            if document_id:
+                # 使用document_id查找
+                document = db.session.query(DocumentNode).filter_by(
+                    id=document_id,
+                    is_deleted=False
+                ).first()
+            else:
+                # 使用file_path查找
+                document = db.session.query(DocumentNode).filter_by(
+                    file_path=file_path,
+                    is_deleted=False
+                ).first()
+                
+            if not document:
+                raise FileNotFoundError(f"MCP Excel文件不存在: {file_path}")
+            
+            # 检查虚拟文件是否存在于文件系统中
+            import os
+            full_virtual_path = os.path.join('uploads', file_path)
+            
+            if os.path.exists(full_virtual_path):
+                # 文件存在于文件系统中，使用实际Excel文件处理
+                logger.info(f"📁 虚拟Excel文件存在于文件系统: {full_virtual_path}")
+                
+                try:
+                    file_ext = os.path.splitext(full_virtual_path)[1].lower()
+                    if file_ext == '.xlsx':
+                        return self._extract_xlsx_content(full_virtual_path)
+                    elif file_ext == '.xls':
+                        return self._extract_xls_content(full_virtual_path)
+                    else:
+                        raise ValueError(f"不支持的Excel格式: {file_ext}")
+                        
+                except Exception as e:
+                    logger.warning(f"处理虚拟Excel文件失败，降级到文本模式: {e}")
+                    # 降级到文本内容处理
+                    pass
+            
+            # 从数据库获取文本内容（降级处理）
+            logger.info(f"💾 从数据库读取MCP Excel文件内容: {file_path}")
+            
+            content_record = db.session.query(DocumentContent).filter_by(
+                document_id=document.id
+            ).first()
+            
+            if content_record and content_record.content_text:
+                # 将文本内容转换为Excel预览格式
+                text_content = content_record.content_text
+                
+                # 模拟Excel工作表结构
+                content_data = {
+                    'sheets': [{
+                        'name': '生成内容',
+                        'max_row': len(text_content.split('\n')),
+                        'max_column': 1,
+                        'data': [[line] for line in text_content.split('\n') if line.strip()]
+                    }],
+                    'metadata': {
+                        'sheet_count': 1,
+                        'sheet_names': ['生成内容'],
+                        'source': 'mcp_created',
+                        'format': 'xlsx',
+                        'note': '📄 Excel文档已生成，可通过下载功能获取完整表格文件'
+                    }
+                }
+                
+                logger.info(f"✅ MCP Excel文件内容提取成功: {file_path}")
+                return content_data
+            else:
+                # 返回空内容
+                return {
+                    'sheets': [{
+                        'name': 'Empty',
+                        'max_row': 1,
+                        'max_column': 1,
+                        'data': [['[无内容]']]
+                    }],
+                    'metadata': {
+                        'sheet_count': 1,
+                        'sheet_names': ['Empty'],
+                        'source': 'mcp_created',
+                        'format': 'xlsx',
+                        'error': '无法获取文件内容'
+                    }
+                }
+            
+        except Exception as e:
+            logger.error(f"❌ MCP Excel文件内容提取失败: {file_path}, 错误: {str(e)}")
             raise
     
     def _extract_xlsx_content(self, file_path):

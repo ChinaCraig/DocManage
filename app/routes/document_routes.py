@@ -468,15 +468,68 @@ def download_document(doc_id):
             logger.warning(f"文档已删除或不是文件 - ID: {doc_id}")
             abort(404)
         
-        # 检查文件是否存在
+        # 检查文件路径
         logger.info(f"检查文件路径: {document.file_path}")
-        if not document.file_path or not os.path.exists(document.file_path):
-            logger.error(f"文件不存在: {document.file_path}")
-            abort(404)
         
-        logger.info(f"文件存在，准备下载: {document.file_path}")
+        # 检查是否为MCP创建的虚拟文件
+        if document.file_path and document.file_path.startswith('mcp_created/'):
+            # 虚拟文件路径，检查uploads目录
+            virtual_file_path = os.path.join('uploads', document.file_path)
+            logger.info(f"检查虚拟文件路径: {virtual_file_path}")
+            
+            if os.path.exists(virtual_file_path):
+                logger.info(f"虚拟文件存在，准备下载: {virtual_file_path}")
+                
+                # 设置正确的MIME类型
+                mime_type = document.mime_type or 'application/octet-stream'
+                
+                return send_file(
+                    os.path.abspath(virtual_file_path),
+                    as_attachment=True,
+                    download_name=document.name,
+                    mimetype=mime_type
+                )
+            else:
+                # 虚拟文件不存在，但可能是纯文本内容，生成临时文件
+                logger.info(f"虚拟文件不存在，尝试从数据库生成临时文件")
+                
+                from app.models.document_models import DocumentContent
+                content_record = DocumentContent.query.filter_by(document_id=document.id).first()
+                
+                if content_record and content_record.content_text:
+                    # 创建临时文件
+                    import tempfile
+                    
+                    # 根据文件类型决定如何处理
+                    if document.file_type == 'txt':
+                        # 文本文件
+                        temp_file = tempfile.NamedTemporaryFile(
+                            mode='w', 
+                            suffix=f'.{document.file_type}',
+                            delete=False,
+                            encoding='utf-8'
+                        )
+                        temp_file.write(content_record.content_text)
+                        temp_file.close()
+                        
+                        return send_file(
+                            temp_file.name,
+                            as_attachment=True,
+                            download_name=document.name,
+                            mimetype=document.mime_type or 'text/plain'
+                        )
+                    else:
+                        # 其他格式，返回错误
+                        logger.error(f"二进制格式文件缺失: {document.file_path}")
+                        abort(404)
+                else:
+                    logger.error(f"虚拟文件和数据库内容都不存在: {document.file_path}")
+                    abort(404)
         
-        try:
+        # 普通文件路径处理
+        elif document.file_path and os.path.exists(document.file_path):
+            logger.info(f"普通文件存在，准备下载: {document.file_path}")
+            
             # 使用绝对路径
             abs_path = os.path.abspath(document.file_path)
             logger.info(f"使用绝对路径: {abs_path}")
@@ -490,10 +543,9 @@ def download_document(doc_id):
                 download_name=download_name,
                 mimetype=document.mime_type
             )
-            
-        except Exception as send_error:
-            logger.error(f"send_file失败: {send_error}")
-            raise
+        else:
+            logger.error(f"文件不存在: {document.file_path}")
+            abort(404)
         
     except Exception as e:
         logger.error(f"文档下载失败 - 文档ID: {doc_id}, 错误: {str(e)}")

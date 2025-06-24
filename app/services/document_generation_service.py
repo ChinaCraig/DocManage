@@ -23,7 +23,7 @@ class DocumentGenerationService:
     """文档生成服务"""
     
     # 支持的输出格式
-    SUPPORTED_FORMATS = ['txt']  # 当前只支持txt，后续可扩展
+    SUPPORTED_FORMATS = ['txt', 'pdf', 'xlsx', 'docx']  # 支持文本、PDF、Excel、Word格式
     
     # 支持的文档类型
     DOCUMENT_TYPES = {
@@ -53,11 +53,27 @@ class DocumentGenerationService:
             Dict: 生成结果
         """
         try:
+            # 0. 标准化输出格式（兼容意图识别服务的格式名称）
+            format_mapping = {
+                'excel': 'xlsx',  # Excel格式统一为xlsx
+                'doc': 'docx',    # Word格式统一为docx
+                'word': 'docx',   # Word格式的另一种表达
+                'ppt': 'pptx',    # PowerPoint格式（暂未实现）
+                'text': 'txt',    # 文本格式的另一种表达
+            }
+            
+            # 应用格式映射
+            original_format = output_format
+            output_format = format_mapping.get(output_format.lower(), output_format.lower())
+            
+            if original_format != output_format:
+                logger.info(f"格式标准化: {original_format} → {output_format}")
+            
             # 1. 验证输出格式
             if output_format not in DocumentGenerationService.SUPPORTED_FORMATS:
                 return {
                     'success': False,
-                    'error': f'暂不支持 {output_format} 格式，当前只支持: {", ".join(DocumentGenerationService.SUPPORTED_FORMATS)}',
+                    'error': f'暂不支持 {original_format} 格式，当前只支持: {", ".join(DocumentGenerationService.SUPPORTED_FORMATS)}',
                     'query': query_text
                 }
             
@@ -547,16 +563,23 @@ class DocumentGenerationService:
     def _save_generated_document(content: str, source_name: str, document_type: str,
                                output_format: str, parent_folder: DocumentNode = None, 
                                query_text: str = '') -> Optional[DocumentNode]:
-        """保存生成的文档"""
+        """保存生成的文档 - 支持多种格式"""
         try:
             # 生成语义化文件名
             filename = DocumentGenerationService._generate_semantic_filename(
                 source_name, document_type, output_format, query_text)
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             
             # 为生成的文档创建虚拟路径（用于预览系统识别）
             import uuid
             virtual_path = f"mcp_created/{uuid.uuid4()}_{filename}"
+            
+            # 根据输出格式生成实际文件内容和MIME类型
+            file_content, mime_type, file_size = DocumentGenerationService._generate_format_content(
+                content, output_format)
+            
+            if file_content is None:
+                logger.error(f"生成 {output_format} 格式文件失败")
+                return None
             
             # 创建DocumentNode记录
             new_doc = DocumentNode(
@@ -564,9 +587,9 @@ class DocumentGenerationService:
                 type='file',
                 parent_id=parent_folder.id if parent_folder else None,
                 file_type=output_format,
-                file_size=len(content.encode('utf-8')),
+                file_size=file_size,
                 file_path=virtual_path,  # 设置虚拟路径用于预览
-                mime_type='text/plain',
+                mime_type=mime_type,
                 description=f"基于 {source_name} 生成的{DocumentGenerationService.DOCUMENT_TYPES.get(document_type, '文档')}",
                 created_by='document_generation_service',
                 doc_metadata={
@@ -583,22 +606,217 @@ class DocumentGenerationService:
             # 创建DocumentContent记录
             doc_content = DocumentContent(
                 document_id=new_doc.id,
-                content_text=content,
+                content_text=content,  # 始终保存原始文本内容用于搜索
                 page_number=1,
                 chunk_index=0,
                 chunk_text=content[:1000]  # 保存前1000个字符作为chunk
             )
             
             db.session.add(doc_content)
+            
+            # 对于非文本格式，需要将二进制内容存储到虚拟文件系统中
+            if output_format != 'txt' and file_content:
+                DocumentGenerationService._store_virtual_file(virtual_path, file_content)
+            
             db.session.commit()
             
-            logger.info(f"成功保存生成的文档: {filename} (ID: {new_doc.id})")
+            logger.info(f"成功保存生成的 {output_format} 文档: {filename} (ID: {new_doc.id})")
             return new_doc
             
         except Exception as e:
             logger.error(f"保存生成文档失败: {e}")
             db.session.rollback()
             return None
+    
+    @staticmethod
+    def _generate_format_content(content: str, output_format: str) -> tuple[Optional[bytes], str, int]:
+        """根据格式生成文件内容
+        
+        Returns:
+            tuple: (file_content, mime_type, file_size)
+        """
+        try:
+            if output_format == 'txt':
+                # 文本格式
+                file_content = content.encode('utf-8')
+                return file_content, 'text/plain', len(file_content)
+            
+            elif output_format == 'pdf':
+                # PDF格式
+                return DocumentGenerationService._generate_pdf_content(content)
+            
+            elif output_format == 'xlsx':
+                # Excel格式
+                return DocumentGenerationService._generate_xlsx_content(content)
+            
+            elif output_format == 'docx':
+                # Word格式
+                return DocumentGenerationService._generate_docx_content(content)
+            
+            else:
+                logger.error(f"不支持的输出格式: {output_format}")
+                return None, '', 0
+                
+        except Exception as e:
+            logger.error(f"生成 {output_format} 格式内容失败: {e}")
+            return None, '', 0
+    
+    @staticmethod
+    def _generate_pdf_content(content: str) -> tuple[Optional[bytes], str, int]:
+        """生成PDF格式内容"""
+        try:
+            from reportlab.lib.pagesizes import A4
+            from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+            from reportlab.lib.units import inch
+            from reportlab.pdfbase import pdfmetrics
+            from reportlab.pdfbase.ttfonts import TTFont
+            import io
+            
+            # 创建内存缓冲区
+            buffer = io.BytesIO()
+            
+            # 创建PDF文档
+            doc = SimpleDocTemplate(buffer, pagesize=A4)
+            
+            # 获取样式
+            styles = getSampleStyleSheet()
+            
+            # 尝试注册中文字体
+            try:
+                # 如果有中文字体文件，可以注册
+                # pdfmetrics.registerFont(TTFont('SimSun', 'SimSun.ttf'))
+                # normal_style = ParagraphStyle('Normal', fontName='SimSun', fontSize=12)
+                normal_style = styles['Normal']
+            except:
+                normal_style = styles['Normal']
+            
+            # 分割内容为段落
+            story = []
+            paragraphs = content.split('\n\n')
+            
+            for para_text in paragraphs:
+                if para_text.strip():
+                    # 处理特殊字符
+                    para_text = para_text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                    para = Paragraph(para_text, normal_style)
+                    story.append(para)
+                    story.append(Spacer(1, 12))
+            
+            # 构建PDF
+            doc.build(story)
+            
+            # 获取内容
+            pdf_content = buffer.getvalue()
+            buffer.close()
+            
+            return pdf_content, 'application/pdf', len(pdf_content)
+            
+        except ImportError:
+            logger.error("缺少PDF生成依赖：pip install reportlab")
+            return None, '', 0
+        except Exception as e:
+            logger.error(f"生成PDF内容失败: {e}")
+            return None, '', 0
+    
+    @staticmethod
+    def _generate_xlsx_content(content: str) -> tuple[Optional[bytes], str, int]:
+        """生成Excel格式内容"""
+        try:
+            import openpyxl
+            from openpyxl.styles import Font, Alignment
+            import io
+            
+            # 创建工作簿
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "生成的文档"
+            
+            # 设置标题样式
+            title_font = Font(bold=True, size=14)
+            normal_font = Font(size=12)
+            
+            # 分割内容为行
+            lines = content.split('\n')
+            row = 1
+            
+            for line in lines:
+                if line.strip():
+                    # 检查是否是标题（以#开头或包含特定关键词）
+                    if line.startswith('#') or any(keyword in line for keyword in ['报告', '总结', '分析']):
+                        ws.cell(row=row, column=1, value=line.strip('#').strip())
+                        ws.cell(row=row, column=1).font = title_font
+                    else:
+                        ws.cell(row=row, column=1, value=line.strip())
+                        ws.cell(row=row, column=1).font = normal_font
+                    
+                    # 设置自动换行
+                    ws.cell(row=row, column=1).alignment = Alignment(wrap_text=True)
+                    row += 1
+            
+            # 设置列宽
+            ws.column_dimensions['A'].width = 80
+            
+            # 保存到内存
+            buffer = io.BytesIO()
+            wb.save(buffer)
+            excel_content = buffer.getvalue()
+            buffer.close()
+            
+            return excel_content, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', len(excel_content)
+            
+        except ImportError:
+            logger.error("缺少Excel生成依赖：pip install openpyxl")
+            return None, '', 0
+        except Exception as e:
+            logger.error(f"生成Excel内容失败: {e}")
+            return None, '', 0
+    
+    @staticmethod
+    def _generate_docx_content(content: str) -> tuple[Optional[bytes], str, int]:
+        """生成Word格式内容"""
+        try:
+            from docx import Document
+            from docx.shared import Inches
+            import io
+            
+            # 创建文档
+            doc = Document()
+            
+            # 分割内容为段落
+            paragraphs = content.split('\n\n')
+            
+            for para_text in paragraphs:
+                if para_text.strip():
+                    # 检查是否是标题
+                    if para_text.startswith('#'):
+                        # 处理不同级别的标题
+                        level = len(para_text) - len(para_text.lstrip('#'))
+                        title_text = para_text.lstrip('#').strip()
+                        if level == 1:
+                            doc.add_heading(title_text, level=1)
+                        elif level == 2:
+                            doc.add_heading(title_text, level=2)
+                        else:
+                            doc.add_heading(title_text, level=3)
+                    else:
+                        # 普通段落
+                        doc.add_paragraph(para_text.strip())
+            
+            # 保存到内存
+            buffer = io.BytesIO()
+            doc.save(buffer)
+            docx_content = buffer.getvalue()
+            buffer.close()
+            
+            return docx_content, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', len(docx_content)
+            
+        except ImportError:
+            logger.error("缺少Word生成依赖：pip install python-docx")
+            return None, '', 0
+        except Exception as e:
+            logger.error(f"生成Word内容失败: {e}")
+            return None, '', 0
     
     @staticmethod
     def _generate_semantic_filename(source_name: str, document_type: str, 
@@ -873,31 +1091,42 @@ class DocumentGenerationService:
     def _extract_ppt_content(file_path: str) -> Optional[str]:
         """提取PowerPoint文件内容"""
         try:
-            # 尝试使用python-pptx
-            try:
-                import pptx
-                presentation = pptx.Presentation(file_path)
-                text = ""
-                
-                for slide_num, slide in enumerate(presentation.slides, 1):
-                    text += f"=== 幻灯片 {slide_num} ===\n"
-                    
-                    # 提取所有形状中的文本
-                    for shape in slide.shapes:
-                        if hasattr(shape, "text"):
-                            if shape.text.strip():
-                                text += shape.text + "\n"
-                    
-                    text += "\n"
-                
-                return text.strip()
-            except ImportError:
-                logger.warning("python-pptx未安装，请安装：pip install python-pptx")
-            except Exception as pptx_error:
-                logger.warning(f"python-pptx提取失败: {pptx_error}")
-            
+            from pptx import Presentation
+            prs = Presentation(file_path)
+            text_content = []
+            for slide in prs.slides:
+                for shape in slide.shapes:
+                    if hasattr(shape, "text"):
+                        text_content.append(shape.text)
+            return '\n'.join(text_content)
+        except ImportError:
+            logger.warning("缺少PowerPoint处理库：pip install python-pptx")
             return None
+        except Exception as e:
+            logger.error(f"提取PowerPoint文件内容失败 {file_path}: {e}")
+            return None
+    
+    @staticmethod
+    def _store_virtual_file(virtual_path: str, file_content: bytes) -> bool:
+        """存储虚拟文件内容到内存或临时存储"""
+        try:
+            import os
+            
+            # 确保虚拟文件目录存在
+            virtual_dir = os.path.dirname(virtual_path)
+            full_virtual_dir = os.path.join('uploads', virtual_dir)
+            
+            if not os.path.exists(full_virtual_dir):
+                os.makedirs(full_virtual_dir, exist_ok=True)
+            
+            # 将文件内容写入虚拟路径
+            full_virtual_path = os.path.join('uploads', virtual_path)
+            with open(full_virtual_path, 'wb') as f:
+                f.write(file_content)
+            
+            logger.info(f"虚拟文件已存储: {full_virtual_path}")
+            return True
             
         except Exception as e:
-            logger.error(f"提取PowerPoint内容失败 {file_path}: {e}")
-            return None 
+            logger.error(f"存储虚拟文件失败 {virtual_path}: {e}")
+            return False 

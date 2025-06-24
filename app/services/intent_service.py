@@ -695,7 +695,7 @@ class IntentRecognitionService:
             'txt': ['生成txt', '输出txt', '保存为txt', '文本格式'],
             'doc': ['生成doc', '输出doc', 'word格式', '保存为word'],
             'pdf': ['生成pdf', '输出pdf', 'pdf格式', '保存为pdf'],
-            'excel': ['生成excel', '输出excel', '保存为excel', '表格格式'],
+            'excel': ['生成excel', '输出excel', '保存为excel', '表格格式', '预测表格', '数据表格', 'excel表格'],
             'ppt': ['生成ppt', '输出ppt', 'ppt格式', '演示文稿格式']
         }
         
@@ -706,6 +706,18 @@ class IntentRecognitionService:
             for keyword in keywords:
                 if keyword in query_lower:
                     return format_type
+        
+        # 检查表格相关关键词（用户要求生成表格时应该输出Excel）
+        table_keywords = ['表格', '工作表', '数据表', '统计表', '分析表', '预测表']
+        generation_keywords = ['生成', '制作', '创建', '输出', '导出']
+        
+        # 如果同时包含表格关键词和生成关键词，输出Excel格式
+        has_table = any(keyword in query_lower for keyword in table_keywords)
+        has_generation = any(keyword in query_lower for keyword in generation_keywords)
+        
+        if has_table and has_generation:
+            logger.info(f"检测到表格生成请求，使用Excel格式: {query}")
+            return 'excel'
         
         # 如果没有明确指定，且提到文档分析，默认返回txt
         analysis_keywords = ['分析', '分析下', '分析一下', '查看', '看看']
@@ -719,10 +731,6 @@ class IntentRecognitionService:
             'pdf': ['pdf'],
             'ppt': ['ppt', 'pptx']
         }
-        
-        # 如果查询中包含"表格"但没有明确的输出格式，默认为txt
-        if '表格' in query_lower and not any(keyword in query_lower for keywords in explicit_formats.values() for keyword in keywords):
-            return 'txt'
         
         # 默认返回txt格式
         return 'txt'
