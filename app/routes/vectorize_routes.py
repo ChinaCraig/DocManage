@@ -119,7 +119,8 @@ def process_background_vectorization(app):
                 try:
                     background_vectorization_status['current_doc'] = {
                         'id': doc.id,
-                        'name': doc.name
+                        'name': doc.name,
+                        'step': '开始处理'
                     }
                     
                     # 更新文档状态为处理中
@@ -128,7 +129,8 @@ def process_background_vectorization(app):
                     
                     logger.info(f"开始向量化文档: {doc.name}")
                     
-                    # 获取向量化器
+                    # 步骤1：获取向量化器
+                    background_vectorization_status['current_doc']['step'] = '初始化向量化器'
                     vectorizer = vectorization_factory.get_vectorizer(doc.file_path)
                     if not vectorizer:
                         logger.error(f"无法获取向量化器: {doc.name}")
@@ -137,10 +139,12 @@ def process_background_vectorization(app):
                         db.session.commit()
                         continue
                     
-                    # 初始化向量服务
+                    # 步骤2：初始化向量服务
+                    background_vectorization_status['current_doc']['step'] = '初始化向量服务'
                     vectorizer.initialize_vector_service()
                     
-                    # 提取文档内容
+                    # 步骤3：提取文档内容
+                    background_vectorization_status['current_doc']['step'] = '提取文档内容'
                     extract_result = vectorizer.extract_text(doc.file_path)
                     if not extract_result['success']:
                         logger.error(f"提取文档内容失败: {doc.name}")
@@ -149,7 +153,8 @@ def process_background_vectorization(app):
                         db.session.commit()
                         continue
                     
-                    # 分段处理（使用默认参数）
+                    # 步骤4：分段处理
+                    background_vectorization_status['current_doc']['step'] = '文本分段处理'
                     chunks = vectorizer.chunk_text(
                         extract_result['text'],
                         chunk_size=1000,
@@ -163,7 +168,8 @@ def process_background_vectorization(app):
                         db.session.commit()
                         continue
                     
-                    # 上传文件到MinIO（如果可用）
+                    # 步骤5：上传文件到MinIO（如果可用）
+                    background_vectorization_status['current_doc']['step'] = '上传文件到存储'
                     if minio_service.is_available:
                         filename = doc.name
                         timestamp = datetime.now().strftime('%Y/%m/%d')
@@ -175,7 +181,8 @@ def process_background_vectorization(app):
                         if minio_result['success']:
                             doc.minio_path = object_name
                     
-                    # 生成向量数据
+                    # 步骤6：生成向量数据
+                    background_vectorization_status['current_doc']['step'] = '生成向量数据'
                     if doc.description and doc.description.strip():
                         enhanced_chunks = []
                         for chunk in chunks:
@@ -185,8 +192,11 @@ def process_background_vectorization(app):
                     else:
                         vectors_data = vectorizer.generate_vectors_data(str(doc.id), chunks)
                     
-                    # 插入向量数据
+                    # 步骤7：保存向量数据到向量数据库（关键步骤）
+                    background_vectorization_status['current_doc']['step'] = '保存向量数据到数据库'
                     if vectors_data and vectorizer.insert_vectors(vectors_data):
+                        # 步骤8：更新文档状态（最终步骤）
+                        background_vectorization_status['current_doc']['step'] = '完成向量化'
                         doc.is_vectorized = True
                         doc.vector_status = 'completed'
                         doc.vectorized_at = datetime.now()
@@ -198,31 +208,25 @@ def process_background_vectorization(app):
                         logger.error(f"向量数据插入失败: {doc.name}")
                     
                     db.session.commit()
-                    
+
                 except Exception as e:
-                    logger.error(f"处理文档向量化失败 {doc.id}: {str(e)}")
-                    try:
-                        doc.vector_status = 'failed'
-                        background_vectorization_status['failed_docs'] += 1
-                        db.session.commit()
-                    except:
-                        pass
+                    logger.error(f"向量化文档失败 {doc.name}: {str(e)}")
+                    doc.vector_status = 'failed'
+                    background_vectorization_status['failed_docs'] += 1
+                    db.session.commit()
+                    continue
             
-            # 任务完成
-            background_vectorization_status['is_running'] = False
-            background_vectorization_status['current_doc'] = None
-            
-            if not background_vectorization_status['canceled']:
-                logger.info(f"后台向量化任务完成。成功: {background_vectorization_status['processed_docs']}, 失败: {background_vectorization_status['failed_docs']}")
-            
+            logger.info(f"后台向量化完成，成功: {background_vectorization_status['processed_docs']}, 失败: {background_vectorization_status['failed_docs']}")
+
         except Exception as e:
-            logger.error(f"后台向量化任务异常: {str(e)}")
+            logger.error(f"后台向量化任务失败: {str(e)}")
+        finally:
             background_vectorization_status['is_running'] = False
             background_vectorization_status['current_doc'] = None
 
 @vectorize_bp.route('/background/status', methods=['GET'])
 def get_background_vectorization_status():
-    """获取后台向量化状态"""
+    """获取后台向量化状态 - 纯状态查询，不进行任何初始化操作"""
     try:
         with background_vectorization_lock:
             # 计算进度
@@ -234,6 +238,7 @@ def get_background_vectorization_status():
             else:
                 progress_percentage = 0
             
+            # 纯状态返回，不执行任何向量服务操作
             return jsonify({
                 'success': True,
                 'data': {

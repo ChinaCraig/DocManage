@@ -956,17 +956,12 @@ def search_suggestions():
 
 @search_bp.route('/stats', methods=['GET'])
 def search_stats():
-    """搜索统计信息"""
+    """搜索统计信息 - 优化版本，减少不必要的向量服务初始化"""
     try:
-        # 直接使用配置文件中的设置
-        vector_service = VectorServiceAdapter()
-        
-        # 获取向量统计
-        vector_stats = vector_service.get_collection_stats()
-        
-        # 获取文档统计
+        # 先获取文档统计（不依赖向量服务）
         total_documents = DocumentNode.query.filter_by(is_deleted=False, type='file').count()
         total_folders = DocumentNode.query.filter_by(is_deleted=False, type='folder').count()
+        vectorized_documents = DocumentNode.query.filter_by(is_deleted=False, type='file', is_vectorized=True).count()
         
         # 按文件类型统计
         file_type_stats = {}
@@ -974,16 +969,35 @@ def search_stats():
             file_type = doc.file_type or 'unknown'
             file_type_stats[file_type] = file_type_stats.get(file_type, 0) + 1
         
+        # 基础统计数据（无需向量服务）
+        base_stats = {
+            'document_stats': {
+                'total_documents': total_documents,
+                'total_folders': total_folders,
+                'vectorized_documents': vectorized_documents,
+                'file_type_distribution': file_type_stats
+            }
+        }
+        
+        # 尝试获取向量统计（如果失败则使用基础统计）
+        try:
+            # 只在必要时初始化向量服务
+            vector_service = VectorServiceAdapter()
+            vector_stats = vector_service.get_collection_stats()
+            base_stats['vector_stats'] = vector_stats
+        except Exception as vector_error:
+            logger.warning(f"获取向量统计失败，使用基础统计: {vector_error}")
+            # 使用数据库统计作为备用
+            base_stats['vector_stats'] = {
+                'total_entities': vectorized_documents,
+                'collection_name': 'document_vectors',
+                'status': 'unknown',
+                'note': '向量服务暂不可用，显示数据库统计'
+            }
+        
         return jsonify({
             'success': True,
-            'data': {
-                'vector_stats': vector_stats,
-                'document_stats': {
-                    'total_documents': total_documents,
-                    'total_folders': total_folders,
-                    'file_type_distribution': file_type_stats
-                }
-            }
+            'data': base_stats
         })
         
     except Exception as e:

@@ -210,12 +210,12 @@ function showPreviewActions(doc) {
                 if (doc.is_vectorized) {
                     vectorizeBtn.innerHTML = `
                         <i class="bi bi-vector-pen"></i>
-                        查看向量化
+                        查看索引
                     `;
                 } else {
                     vectorizeBtn.innerHTML = `
                         <i class="bi bi-vector-pen"></i>
-                        向量化
+                        索引
                     `;
                 }
             }
@@ -303,7 +303,7 @@ async function showVectorization(docId) {
     vectorizeBtn.classList.add('active');
     vectorizeBtn.innerHTML = `
         <i class="bi bi-vector-pen"></i>
-        关闭向量化
+        关闭索引
     `;
     
     // 显示配置区域和操作按钮
@@ -371,12 +371,12 @@ function closeVectorization() {
         if (currentPreviewDocument && currentPreviewDocument.is_vectorized) {
             vectorizeBtn.innerHTML = `
                 <i class="bi bi-vector-pen"></i>
-                查看向量化
+                查看索引
             `;
         } else {
             vectorizeBtn.innerHTML = `
                 <i class="bi bi-vector-pen"></i>
-                向量化
+                索引
             `;
         }
     }
@@ -1287,6 +1287,9 @@ async function uploadFile() {
         // 重新加载文档树和统计信息
         await loadFileTree();
         loadStats();
+        
+        // 重新启动后台向量化监控（文件上传后可能有新的向量化任务）
+        startBackgroundVectorizationMonitoring();
         
         // 恢复之前选中的节点状态
         if (previousSelectedNodeId) {
@@ -2466,7 +2469,7 @@ function generateDocumentInfo(node) {
                 </div>
                 <div style="display: flex; align-items: center; gap: 6px;">
                     <i class="bi bi-vector-pen ${isVectorized === '是' ? 'text-success' : 'text-muted'}" style="font-size: 12px;"></i>
-                    <span style="color: ${isVectorized === '是' ? '#28a745' : '#6c757d'};" title="${vectorizedDate ? '向量化时间: ' + vectorizedDate : ''}">向量化: ${isVectorized}</span>
+                    <span style="color: ${isVectorized === '是' ? '#28a745' : '#6c757d'};" title="${vectorizedDate ? '索引时间: ' + vectorizedDate : ''}">索引: ${isVectorized}</span>
                 </div>
                 <div style="display: flex; align-items: center; gap: 6px;">
                     <i class="bi bi-calendar text-secondary" style="font-size: 12px;"></i>
@@ -3757,12 +3760,12 @@ function updateVectorizationStatus(docId, isVectorized, vectorizedAt) {
             if (isVectorized) {
                 vectorizeBtn.innerHTML = `
                     <i class="bi bi-vector-pen"></i>
-                    查看向量化
+                    查看索引
                 `;
             } else {
                 vectorizeBtn.innerHTML = `
                     <i class="bi bi-vector-pen"></i>
-                    向量化
+                    索引
                 `;
             }
         }
@@ -6189,15 +6192,10 @@ function adjustLayoutForImageViewer() {
 
 function startBackgroundVectorizationMonitoring() {
     // 启动后台索引进度监控
-    // 立即检查一次状态
-    checkBackgroundVectorizationStatus();
-    
-    // 设置定时器，每3秒检查一次
-    if (backgroundVectorizationTimer) {
-        clearInterval(backgroundVectorizationTimer);
-    }
-    
-    backgroundVectorizationTimer = setInterval(checkBackgroundVectorizationStatus, 3000);
+    // 立即检查一次状态，如果有任务运行才启动定时器
+    checkBackgroundVectorizationStatus().then(() => {
+        // checkBackgroundVectorizationStatus 会根据任务状态决定是否启动定时器
+    });
 }
 
 async function checkBackgroundVectorizationStatus() {
@@ -6207,7 +6205,14 @@ async function checkBackgroundVectorizationStatus() {
         const result = await response.json();
         
         if (result.success) {
-            updateVectorizationProgressDisplay(result.data);
+            const status = result.data;
+            updateVectorizationProgressDisplay(status);
+            
+            // 只有任务正在运行时才启动/维持定时器
+            if (status.is_running && !backgroundVectorizationTimer) {
+                console.log('检测到后台索引任务运行中，启动状态轮询');
+                backgroundVectorizationTimer = setInterval(checkBackgroundVectorizationStatus, 3000);
+            }
         }
     } catch (error) {
         console.error('检查后台索引状态失败:', error);
@@ -6249,22 +6254,59 @@ function updateVectorizationProgressDisplay(status) {
             progressBar.style.background = '#dc3545';  // 红色
         }
         
-        // 设置工具提示
+        // 设置工具提示 - 显示当前步骤信息
         let tooltipText = `正在索引: ${status.processed_docs} 已完成`;
         if (status.failed_docs > 0) {
             tooltipText += `, ${status.failed_docs} 失败`;
         }
         if (status.current_doc) {
             tooltipText += `\n当前处理: ${status.current_doc.name}`;
+            if (status.current_doc.step) {
+                tooltipText += `\n当前步骤: ${status.current_doc.step}`;
+            }
         }
         progressElement.title = tooltipText;
         
     } else {
-        // 隐藏进度面板
-        progressElement.style.display = 'none';
+        // 任务已完成，停止定时器以避免无意义的轮询
+        if (backgroundVectorizationTimer) {
+            clearInterval(backgroundVectorizationTimer);
+            backgroundVectorizationTimer = null;
+            console.log('后台索引任务完成，停止状态轮询');
+        }
         
-        // 重新加载统计信息以更新向量数量
-        loadStats();
+        // 任务已完成，显示最终状态一段时间后再隐藏
+        if (status.total_docs > 0) {
+            // 显示完成状态
+            progressElement.style.display = 'flex';
+            
+            const processed = status.processed_docs + status.failed_docs;
+            statusElement.textContent = `${processed}/${status.total_docs}`;
+            
+            // 设置为100%进度
+            progressBar.style.width = '100%';
+            
+            // 根据结果设置颜色
+            if (status.failed_docs > 0) {
+                progressBar.style.background = '#dc3545';  // 红色 - 有失败
+                progressElement.title = `索引完成: ${status.processed_docs} 成功, ${status.failed_docs} 失败`;
+            } else {
+                progressBar.style.background = '#28a745';  // 绿色 - 全部成功
+                progressElement.title = `索引完成: 全部 ${status.processed_docs} 个文档索引成功`;
+            }
+            
+            // 3秒后自动隐藏进度条
+            setTimeout(() => {
+                if (progressElement) {
+                    progressElement.style.display = 'none';
+                }
+                // 重新加载统计信息以更新向量数量
+                loadStats();
+            }, 3000);
+        } else {
+            // 立即隐藏（没有文档需要处理的情况）
+            progressElement.style.display = 'none';
+        }
     }
 }
 
@@ -6336,6 +6378,7 @@ async function showVectorizationProgressDetails() {
                             ${status.current_doc ? `
                                 <div class="alert alert-info">
                                     <strong>当前处理:</strong> ${status.current_doc.name}
+                                    ${status.current_doc.step ? `<br><small class="text-muted">当前步骤: ${status.current_doc.step}</small>` : ''}
                                 </div>
                             ` : ''}
                             

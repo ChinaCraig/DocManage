@@ -3063,7 +3063,7 @@
             </div>
             <div class="stat-item">
                 <i class="bi bi-vector-pen"></i>
-                <span>向量: <strong id="totalVectors">0</strong></span>
+                <span>索引: <strong id="totalVectors">0</strong></span>
             </div>
             <!-- 后台索引进度显示 -->
             <div class="stat-item vectorization-progress" id="vectorizationProgress" style="display: none;" onclick="toggleVectorizationProgressPanel()">
@@ -3185,9 +3185,9 @@
                                             <i class="bi bi-trash"></i>
                                             删除
                                         </button>
-                                        <button class="preview-action-btn btn-vectorize" id="vectorizeBtn" onclick="toggleVectorization()" title="向量化" style="display: none;">
+                                        <button class="preview-action-btn btn-vectorize" id="vectorizeBtn" onclick="toggleVectorization()" title="索引" style="display: none;">
                                             <i class="bi bi-vector-pen"></i>
-                                            向量化
+                                            索引
                                         </button>
                                         </div>
                                         <button class="preview-close-btn" id="previewCloseBtn" onclick="closePreviewPanel()" title="关闭预览">
@@ -3212,13 +3212,13 @@
                             <div class="vectorization-panel" id="vectorizationPanel">
                                 <div class="vector-panel">
                                     <div class="vector-panel-header">
-                                        <h6><i class="bi bi-vector-pen"></i> 向量分段信息</h6>
+                                        <h6><i class="bi bi-vector-pen"></i> 索引分段信息</h6>
                                     </div>
                                     <div class="vector-panel-content" id="vectorPanelContent">
                                         <!-- 向量化配置参数区域 -->
                                         <div class="vectorization-config-section" style="display: none;" id="vectorizationConfig">
                                             <div class="config-header mb-3">
-                                                <h6 class="text-primary"><i class="bi bi-gear"></i> 向量化配置</h6>
+                                                <h6 class="text-primary"><i class="bi bi-gear"></i> 索引配置</h6>
                                             </div>
                                             <div class="row">
                                                 <div class="col-md-6">
@@ -3249,7 +3249,7 @@
                                         <!-- 默认空状态 -->
                                         <div class="empty-state" id="vectorEmptyState">
                                             <i class="bi bi-puzzle"></i>
-                                            <p>请先对文档进行向量化</p>
+                                            <p>请先对文档进行索引</p>
                                         </div>
                                     </div>
                                     
@@ -3399,7 +3399,7 @@
         </div>
         <div class="context-menu-item" onclick="vectorizeSelectedDocument()">
             <i class="bi bi-vector-pen"></i>
-            向量化
+            索引
         </div>
         <div class="context-menu-item danger" onclick="deleteSelectedDocument()">
             <i class="bi bi-trash"></i>
