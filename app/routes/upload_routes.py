@@ -210,10 +210,18 @@ def upload_file():
         # 重新查询以获取标签信息
         updated_doc = DocumentNode.query.get(document.id)
         
+        # 自动触发后台向量化
+        try:
+            from app.routes.vectorize_routes import start_background_vectorization
+            start_background_vectorization()
+            logger.info("文件上传完成，已自动启动后台索引任务")
+        except Exception as e:
+            logger.warning(f"启动后台索引失败: {str(e)}")
+        
         return jsonify({
             'success': True,
             'data': updated_doc.to_dict(),
-            'message': '文件上传成功'
+            'message': '文件上传成功，已启动自动索引'
         })
         
     except Exception as e:
@@ -547,9 +555,18 @@ def upload_batch():
         # 提交所有更改
         db.session.commit()
         
+        # 自动触发后台向量化
+        try:
+            from app.routes.vectorize_routes import start_background_vectorization
+            start_background_vectorization()
+            logger.info("批量上传完成，已自动启动后台索引任务")
+        except Exception as e:
+            logger.warning(f"启动后台索引失败: {str(e)}")
+        
         result_message = f'批量上传完成，共上传 {len(uploaded_files)} 个文件，创建 {len(created_folders)} 个文件夹'
         if skipped_files:
             result_message += f'，跳过 {len(skipped_files)} 个文件'
+        result_message += '，已启动自动索引'
         
         return jsonify({
             'success': True,

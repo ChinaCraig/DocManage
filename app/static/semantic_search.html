@@ -309,6 +309,7 @@
             gap: 8px;
             flex-wrap: nowrap;
             align-items: center;
+            justify-content: space-between; /* 改为两端对齐，让按钮分散分布 */
         }
 
         .toolbar-btn {
@@ -323,9 +324,11 @@
             align-items: center;
             gap: 5px;
             white-space: nowrap;
-            flex-shrink: 0;
+            flex: 1; /* 让两个按钮均匀分配剩余空间 */
+            justify-content: center; /* 按钮内容居中 */
             min-width: 0;
             height: 36px; /* 固定高度与搜索框协调 */
+            max-width: 140px; /* 限制最大宽度，避免按钮过宽 */
         }
 
         .toolbar-btn i {
@@ -2269,6 +2272,13 @@
             
             .toolbar-actions {
                 flex-direction: column;
+                gap: 8px;
+            }
+            
+            .toolbar-btn {
+                flex: none; /* 在小屏幕时不使用flex扩展 */
+                max-width: none; /* 移除最大宽度限制 */
+                justify-content: flex-start; /* 内容左对齐 */
             }
         }
 
@@ -3010,6 +3020,29 @@
             background: #ffebee;
             color: #c62828;
         }
+
+        /* 后台向量化进度显示 */
+        .stat-item.vectorization-progress {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            padding: 5px 12px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+        }
+
+        .progress-indicator {
+            width: 100px;
+            height: 10px;
+            background: #f3f3f3;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: #4caf50;
+        }
     </style>
 </head>
 <body>
@@ -3031,6 +3064,14 @@
             <div class="stat-item">
                 <i class="bi bi-vector-pen"></i>
                 <span>向量: <strong id="totalVectors">0</strong></span>
+            </div>
+            <!-- 后台索引进度显示 -->
+            <div class="stat-item vectorization-progress" id="vectorizationProgress" style="display: none;" onclick="toggleVectorizationProgressPanel()">
+                <i class="bi bi-lightning-charge"></i>
+                <span>索引: <strong id="vectorizationStatus">0/0</strong></span>
+                <div class="progress-indicator" id="progressIndicator">
+                    <div class="progress-bar" id="progressBar" style="width: 0%"></div>
+                </div>
             </div>
         </div>
 
@@ -3082,7 +3123,7 @@
                                 <i class="bi bi-cloud-upload"></i>
                                 上传文件
                             </button>
-                            <button class="toolbar-btn btn-warning-custom" onclick="showBatchVectorizeModal()">
+                            <button class="toolbar-btn btn-warning-custom" onclick="showBatchVectorizeModal()" style="display: none;">
                                 <i class="bi bi-lightning-charge"></i>
                                 批量向量化
                             </button>
@@ -3144,7 +3185,7 @@
                                             <i class="bi bi-trash"></i>
                                             删除
                                         </button>
-                                        <button class="preview-action-btn btn-vectorize" id="vectorizeBtn" onclick="toggleVectorization()" title="向量化">
+                                        <button class="preview-action-btn btn-vectorize" id="vectorizeBtn" onclick="toggleVectorization()" title="向量化" style="display: none;">
                                             <i class="bi bi-vector-pen"></i>
                                             向量化
                                         </button>

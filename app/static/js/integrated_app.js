@@ -12,6 +12,10 @@ let uploadAreaInitialized = false; // 上传区域初始化标志
 let isPreviewPanelOpen = false; // 预览面板开启状态，默认关闭
 let isChatStarted = false; // 聊天是否已开始，控制输入框位置
 
+// 后台向量化相关全局变量
+let backgroundVectorizationTimer = null; // 进度监控定时器
+let isBackgroundVectorizationVisible = false; // 进度面板是否可见
+
 // LLM相关全局变量
 let availableLLMModels = [];
 let selectedLLMModel = '';
@@ -77,6 +81,9 @@ function initUnifiedInterface() {
     
     // 初始显示空状态
     showEmptyState();
+    
+    // 启动后台索引进度监控
+    startBackgroundVectorizationMonitoring();
 }
 
 function showEmptyState() {
@@ -194,10 +201,12 @@ function showPreviewActions(doc) {
         // 根据文档类型调整按钮显示
         if (doc.type === 'file') {
             if (downloadBtn) downloadBtn.style.display = 'flex';
+            // 向量化按钮保持隐藏，但保留功能
             if (vectorizeBtn) {
-                vectorizeBtn.style.display = 'flex';
+                // 不设置display，保持HTML中的隐藏状态
+                // vectorizeBtn.style.display = 'flex';  // 注释掉这行
                 
-                // 更新向量化按钮状态
+                // 更新向量化按钮状态（虽然隐藏，但保持状态同步）
                 if (doc.is_vectorized) {
                     vectorizeBtn.innerHTML = `
                         <i class="bi bi-vector-pen"></i>
@@ -6174,5 +6183,241 @@ function adjustLayoutForImageViewer() {
     }
     
     console.log('为图片预览调整了面板布局');
+}
+
+// ============ 后台索引进度监控 ============
+
+function startBackgroundVectorizationMonitoring() {
+    // 启动后台索引进度监控
+    // 立即检查一次状态
+    checkBackgroundVectorizationStatus();
+    
+    // 设置定时器，每3秒检查一次
+    if (backgroundVectorizationTimer) {
+        clearInterval(backgroundVectorizationTimer);
+    }
+    
+    backgroundVectorizationTimer = setInterval(checkBackgroundVectorizationStatus, 3000);
+}
+
+async function checkBackgroundVectorizationStatus() {
+    // 检查后台索引状态
+    try {
+        const response = await fetch('/api/vectorize/background/status');
+        const result = await response.json();
+        
+        if (result.success) {
+            updateVectorizationProgressDisplay(result.data);
+        }
+    } catch (error) {
+        console.error('检查后台索引状态失败:', error);
+    }
+}
+
+function updateVectorizationProgressDisplay(status) {
+    // 更新顶部导航栏的索引进度显示
+    const progressElement = document.getElementById('vectorizationProgress');
+    const statusElement = document.getElementById('vectorizationStatus');
+    const progressBar = document.getElementById('progressBar');
+    
+    if (!progressElement || !statusElement || !progressBar) {
+        return;
+    }
+    
+    if (status.is_running) {
+        // 显示进度面板
+        progressElement.style.display = 'flex';
+        
+        // 更新状态文本
+        const processed = status.processed_docs + status.failed_docs;
+        statusElement.textContent = `${processed}/${status.total_docs}`;
+        
+        // 更新进度条
+        progressBar.style.width = `${status.progress_percentage}%`;
+        
+        // 根据进度设置颜色
+        if (status.progress_percentage < 50) {
+            progressBar.style.background = '#ffc107';  // 黄色
+        } else if (status.progress_percentage < 100) {
+            progressBar.style.background = '#007bff';  // 蓝色
+        } else {
+            progressBar.style.background = '#28a745';  // 绿色
+        }
+        
+        // 如果有失败的文档，显示警告色
+        if (status.failed_docs > 0) {
+            progressBar.style.background = '#dc3545';  // 红色
+        }
+        
+        // 设置工具提示
+        let tooltipText = `正在索引: ${status.processed_docs} 已完成`;
+        if (status.failed_docs > 0) {
+            tooltipText += `, ${status.failed_docs} 失败`;
+        }
+        if (status.current_doc) {
+            tooltipText += `\n当前处理: ${status.current_doc.name}`;
+        }
+        progressElement.title = tooltipText;
+        
+    } else {
+        // 隐藏进度面板
+        progressElement.style.display = 'none';
+        
+        // 重新加载统计信息以更新向量数量
+        loadStats();
+    }
+}
+
+function toggleVectorizationProgressPanel() {
+    // 点击进度显示时的处理
+    if (isBackgroundVectorizationVisible) {
+        hideVectorizationProgressDetails();
+    } else {
+        showVectorizationProgressDetails();
+    }
+}
+
+async function showVectorizationProgressDetails() {
+    // 显示详细的索引进度面板
+    try {
+        const response = await fetch('/api/vectorize/background/status');
+        const result = await response.json();
+        
+        if (result.success) {
+            const status = result.data;
+            
+            // 创建详细进度弹窗
+            const modal = document.createElement('div');
+            modal.className = 'modal fade';
+            modal.id = 'vectorizationProgressModal';
+            modal.innerHTML = `
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">
+                                <i class="bi bi-lightning-charge"></i>
+                                后台索引进度
+                            </h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="row mb-3">
+                                <div class="col-md-4">
+                                    <div class="card text-center">
+                                        <div class="card-body">
+                                            <h5 class="card-title text-success">${status.processed_docs}</h5>
+                                            <p class="card-text">已完成</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="card text-center">
+                                        <div class="card-body">
+                                            <h5 class="card-title text-warning">${status.total_docs - status.processed_docs - status.failed_docs}</h5>
+                                            <p class="card-text">待处理</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="card text-center">
+                                        <div class="card-body">
+                                            <h5 class="card-title text-danger">${status.failed_docs}</h5>
+                                            <p class="card-text">失败</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="progress mb-3">
+                                <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                     style="width: ${status.progress_percentage}%">${status.progress_percentage}%</div>
+                            </div>
+                            
+                            ${status.current_doc ? `
+                                <div class="alert alert-info">
+                                    <strong>当前处理:</strong> ${status.current_doc.name}
+                                </div>
+                            ` : ''}
+                            
+                            ${status.start_time ? `
+                                <p class="text-muted">
+                                    <small>开始时间: ${new Date(status.start_time).toLocaleString()}</small>
+                                </p>
+                            ` : ''}
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-danger" onclick="cancelBackgroundVectorization()">
+                                <i class="bi bi-stop-circle"></i>
+                                取消任务
+                            </button>
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                                关闭
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+            const modalInstance = new bootstrap.Modal(modal);
+            modalInstance.show();
+            
+            // 模态框关闭时移除元素
+            modal.addEventListener('hidden.bs.modal', () => {
+                document.body.removeChild(modal);
+                isBackgroundVectorizationVisible = false;
+            });
+            
+            isBackgroundVectorizationVisible = true;
+        }
+    } catch (error) {
+        console.error('获取索引进度详情失败:', error);
+        showError('获取索引进度失败');
+    }
+}
+
+function hideVectorizationProgressDetails() {
+    // 隐藏详细进度面板
+    const modal = document.getElementById('vectorizationProgressModal');
+    if (modal) {
+        const modalInstance = bootstrap.Modal.getInstance(modal);
+        if (modalInstance) {
+            modalInstance.hide();
+        }
+    }
+    isBackgroundVectorizationVisible = false;
+}
+
+async function cancelBackgroundVectorization() {
+    // 取消后台索引任务
+    try {
+        const confirmed = await showConfirmModal(
+            '确定要取消当前的后台索引任务吗？',
+            '取消索引',
+            '确定取消',
+            'btn-danger'
+        );
+        
+        if (confirmed) {
+            const response = await fetch('/api/vectorize/background/cancel', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                showSuccess('后台索引任务已取消');
+                hideVectorizationProgressDetails();
+            } else {
+                showError('取消索引任务失败: ' + result.message);
+            }
+        }
+    } catch (error) {
+        console.error('取消后台索引失败:', error);
+        showError('取消索引任务失败');
+    }
 }
 

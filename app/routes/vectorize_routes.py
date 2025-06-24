@@ -2,7 +2,7 @@
 文档向量化路由
 处理各种类型文档的向量化操作，支持内容识别和预览编辑
 """
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from app import db
 from app.models import DocumentNode
 from app.services.vectorization import VectorizationFactory
@@ -13,6 +13,7 @@ import os
 import uuid
 from datetime import datetime
 from typing import Dict, List, Any
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,273 @@ vectorize_bp = Blueprint('vectorize', __name__)
 vectorization_factory = VectorizationFactory()
 minio_service = MinIOService()
 image_recognition_service = ImageRecognitionService()
+
+# 全局变量用于管理后台向量化任务
+background_vectorization_thread = None
+background_vectorization_lock = threading.Lock()
+background_vectorization_status = {
+    'is_running': False,
+    'total_docs': 0,
+    'processed_docs': 0,
+    'failed_docs': 0,
+    'current_doc': None,
+    'start_time': None,
+    'canceled': False
+}
+
+def cancel_background_vectorization():
+    """取消当前的后台向量化任务"""
+    global background_vectorization_status
+    with background_vectorization_lock:
+        if background_vectorization_status['is_running']:
+            background_vectorization_status['canceled'] = True
+            logger.info("后台向量化任务已标记为取消")
+            return True
+    return False
+
+def start_background_vectorization():
+    """启动后台向量化任务"""
+    global background_vectorization_thread, background_vectorization_status
+    
+    with background_vectorization_lock:
+        # 如果有正在运行的任务，先取消
+        if background_vectorization_status['is_running']:
+            cancel_background_vectorization()
+            # 等待当前线程结束
+            if background_vectorization_thread and background_vectorization_thread.is_alive():
+                background_vectorization_thread.join(timeout=5)
+        
+        # 重置状态
+        background_vectorization_status = {
+            'is_running': True,
+            'total_docs': 0,
+            'processed_docs': 0,
+            'failed_docs': 0,
+            'current_doc': None,
+            'start_time': datetime.now(),
+            'canceled': False
+        }
+        
+        # 启动新的后台线程
+        from flask import current_app
+        app = current_app._get_current_object()
+        background_vectorization_thread = threading.Thread(
+            target=process_background_vectorization, 
+            args=(app,),
+            daemon=True
+        )
+        background_vectorization_thread.start()
+        logger.info("后台向量化任务已启动")
+
+def process_background_vectorization(app):
+    """后台处理所有未向量化的文档"""
+    global background_vectorization_status
+    
+    with app.app_context():
+        try:
+            # 获取所有未向量化的文档
+            all_docs = DocumentNode.query.filter_by(
+                type='file', 
+                is_deleted=False, 
+                is_vectorized=False
+            ).all()
+            
+            # 过滤支持向量化的文件
+            supported_docs = []
+            for doc in all_docs:
+                if doc.file_path and vectorization_factory.is_supported_file(doc.file_path):
+                    supported_docs.append(doc)
+            
+            background_vectorization_status['total_docs'] = len(supported_docs)
+            
+            if not supported_docs:
+                logger.info("没有需要向量化的文档")
+                background_vectorization_status['is_running'] = False
+                return
+            
+            logger.info(f"开始后台向量化，共 {len(supported_docs)} 个文档")
+            
+            # 处理每个文档
+            for doc in supported_docs:
+                # 检查是否被取消
+                if background_vectorization_status['canceled']:
+                    logger.info("后台向量化任务被取消")
+                    break
+                
+                try:
+                    background_vectorization_status['current_doc'] = {
+                        'id': doc.id,
+                        'name': doc.name
+                    }
+                    
+                    # 更新文档状态为处理中
+                    doc.vector_status = 'processing'
+                    db.session.commit()
+                    
+                    logger.info(f"开始向量化文档: {doc.name}")
+                    
+                    # 获取向量化器
+                    vectorizer = vectorization_factory.get_vectorizer(doc.file_path)
+                    if not vectorizer:
+                        logger.error(f"无法获取向量化器: {doc.name}")
+                        doc.vector_status = 'failed'
+                        background_vectorization_status['failed_docs'] += 1
+                        db.session.commit()
+                        continue
+                    
+                    # 初始化向量服务
+                    vectorizer.initialize_vector_service()
+                    
+                    # 提取文档内容
+                    extract_result = vectorizer.extract_text(doc.file_path)
+                    if not extract_result['success']:
+                        logger.error(f"提取文档内容失败: {doc.name}")
+                        doc.vector_status = 'failed'
+                        background_vectorization_status['failed_docs'] += 1
+                        db.session.commit()
+                        continue
+                    
+                    # 分段处理（使用默认参数）
+                    chunks = vectorizer.chunk_text(
+                        extract_result['text'],
+                        chunk_size=1000,
+                        overlap=200
+                    )
+                    
+                    if not chunks:
+                        logger.error(f"文档分段失败: {doc.name}")
+                        doc.vector_status = 'failed'
+                        background_vectorization_status['failed_docs'] += 1
+                        db.session.commit()
+                        continue
+                    
+                    # 上传文件到MinIO（如果可用）
+                    if minio_service.is_available:
+                        filename = doc.name
+                        timestamp = datetime.now().strftime('%Y/%m/%d')
+                        unique_id = str(uuid.uuid4())
+                        file_type = vectorization_factory.get_file_type(doc.file_path)
+                        object_name = f"documents/{file_type}/{timestamp}/{unique_id}_{filename}"
+                        
+                        minio_result = minio_service.upload_file(doc.file_path, object_name)
+                        if minio_result['success']:
+                            doc.minio_path = object_name
+                    
+                    # 生成向量数据
+                    if doc.description and doc.description.strip():
+                        enhanced_chunks = []
+                        for chunk in chunks:
+                            enhanced_chunk = f"文档描述: {doc.description.strip()}\n\n内容: {chunk}"
+                            enhanced_chunks.append(enhanced_chunk)
+                        vectors_data = vectorizer.generate_vectors_data(str(doc.id), chunks, enhanced_chunks)
+                    else:
+                        vectors_data = vectorizer.generate_vectors_data(str(doc.id), chunks)
+                    
+                    # 插入向量数据
+                    if vectors_data and vectorizer.insert_vectors(vectors_data):
+                        doc.is_vectorized = True
+                        doc.vector_status = 'completed'
+                        doc.vectorized_at = datetime.now()
+                        background_vectorization_status['processed_docs'] += 1
+                        logger.info(f"文档向量化完成: {doc.name}")
+                    else:
+                        doc.vector_status = 'failed'
+                        background_vectorization_status['failed_docs'] += 1
+                        logger.error(f"向量数据插入失败: {doc.name}")
+                    
+                    db.session.commit()
+                    
+                except Exception as e:
+                    logger.error(f"处理文档向量化失败 {doc.id}: {str(e)}")
+                    try:
+                        doc.vector_status = 'failed'
+                        background_vectorization_status['failed_docs'] += 1
+                        db.session.commit()
+                    except:
+                        pass
+            
+            # 任务完成
+            background_vectorization_status['is_running'] = False
+            background_vectorization_status['current_doc'] = None
+            
+            if not background_vectorization_status['canceled']:
+                logger.info(f"后台向量化任务完成。成功: {background_vectorization_status['processed_docs']}, 失败: {background_vectorization_status['failed_docs']}")
+            
+        except Exception as e:
+            logger.error(f"后台向量化任务异常: {str(e)}")
+            background_vectorization_status['is_running'] = False
+            background_vectorization_status['current_doc'] = None
+
+@vectorize_bp.route('/background/status', methods=['GET'])
+def get_background_vectorization_status():
+    """获取后台向量化状态"""
+    try:
+        with background_vectorization_lock:
+            # 计算进度
+            if background_vectorization_status['total_docs'] > 0:
+                progress_percentage = int(
+                    (background_vectorization_status['processed_docs'] + background_vectorization_status['failed_docs']) 
+                    / background_vectorization_status['total_docs'] * 100
+                )
+            else:
+                progress_percentage = 0
+            
+            return jsonify({
+                'success': True,
+                'data': {
+                    'is_running': background_vectorization_status['is_running'],
+                    'total_docs': background_vectorization_status['total_docs'],
+                    'processed_docs': background_vectorization_status['processed_docs'],
+                    'failed_docs': background_vectorization_status['failed_docs'],
+                    'current_doc': background_vectorization_status['current_doc'],
+                    'progress_percentage': progress_percentage,
+                    'canceled': background_vectorization_status['canceled'],
+                    'start_time': background_vectorization_status['start_time'].isoformat() if background_vectorization_status['start_time'] else None
+                }
+            })
+    except Exception as e:
+        logger.error(f"获取后台向量化状态失败: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@vectorize_bp.route('/background/start', methods=['POST'])
+def start_background_vectorization_api():
+    """手动启动后台向量化任务"""
+    try:
+        start_background_vectorization()
+        return jsonify({
+            'success': True,
+            'message': '后台向量化任务已启动'
+        })
+    except Exception as e:
+        logger.error(f"启动后台向量化失败: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@vectorize_bp.route('/background/cancel', methods=['POST'])
+def cancel_background_vectorization_api():
+    """取消后台向量化任务"""
+    try:
+        if cancel_background_vectorization():
+            return jsonify({
+                'success': True,
+                'message': '后台向量化任务已取消'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': '没有正在运行的后台向量化任务'
+            })
+    except Exception as e:
+        logger.error(f"取消后台向量化失败: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
 @vectorize_bp.route('/preview/<int:doc_id>', methods=['POST'])
 def preview_document_vectorization(doc_id):
