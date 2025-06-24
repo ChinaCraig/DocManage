@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-律师案件案宗文档管理系统启动文件
+智能文档启动文件
 """
 import os
 import logging
@@ -36,7 +36,7 @@ def main():
         port = Config.APP_PORT
         
         # 启动应用
-        logger.info("启动文档管理系统...")
+        logger.info("启动智能文档...")
         logger.info(f"访问地址: http://{host}:{port}")
         
         app.run(
