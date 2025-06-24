@@ -77,15 +77,52 @@ class DocumentGenerationService:
                     'query': query_text
                 }
             
-            # 2. 查找源文件或文件夹
+            # 2. 查找源文件或文件夹（支持模糊查询）
             source_node = DocumentGenerationService._find_source_node(source_path)
             if not source_node:
-                return {
-                    'success': False,
-                    'error': f'未找到源文件或文件夹: "{source_path}"',
-                    'query': query_text,
-                    'source_path': source_path
-                }
+                # 如果找不到源文件，尝试智能检索
+                logger.info(f"未找到源文件或文件夹: '{source_path}'，尝试智能检索...")
+                
+                try:
+                    # 使用源路径作为搜索关键词进行向量检索
+                    from app.services.vectorization.vector_service_adapter import VectorServiceAdapter
+                    
+                    vector_adapter = VectorServiceAdapter()
+                    search_results = vector_adapter.search(
+                        query=source_path,  # 直接使用源路径作为搜索关键词
+                        top_k=10,
+                        threshold=0.3
+                    )
+                    
+                    if search_results and len(search_results) > 0:
+                        # 使用搜索结果生成文档
+                        logger.info(f"智能检索找到 {len(search_results)} 个相关结果，使用搜索结果生成文档")
+                        
+                        return DocumentGenerationService.generate_from_search_results(
+                            search_results=search_results,
+                            output_format=output_format,
+                            document_type=document_type,
+                            query_text=query_text,
+                            llm_model=llm_model,
+                            search_keywords=source_path
+                        )
+                    else:
+                        return {
+                            'success': False,
+                            'error': f'未找到与"{source_path}"相关的文档或文件，请尝试使用更具体的文件名或文件夹名',
+                            'query': query_text,
+                            'source_path': source_path,
+                            'suggestion': '💡 建议：可以尝试使用完整的文件名或文件夹名，例如："基于销售数据文件夹生成报告"'
+                        }
+                        
+                except Exception as e:
+                    logger.error(f"智能检索失败: {e}")
+                    return {
+                        'success': False,
+                        'error': f'未找到源文件或文件夹: "{source_path}"，智能检索也未找到相关内容',
+                        'query': query_text,
+                        'source_path': source_path
+                    }
             
             # 3. 根据源类型处理
             if source_node.type == 'folder':
@@ -107,8 +144,130 @@ class DocumentGenerationService:
             }
     
     @staticmethod
+    def generate_from_search_results(search_results: List[Dict], output_format: str = 'txt',
+                                   document_type: str = 'summary', query_text: str = '',
+                                   llm_model: str = None, search_keywords: str = '') -> Dict[str, Any]:
+        """
+        基于搜索结果生成文档
+        
+        Args:
+            search_results: 聚合后的文件级搜索结果
+            output_format: 输出格式
+            document_type: 文档类型
+            query_text: 原始查询文本
+            llm_model: LLM模型
+            search_keywords: 搜索关键词（用于文件命名）
+            
+        Returns:
+            Dict: 生成结果
+        """
+        try:
+            logger.info(f"开始基于搜索结果生成 {document_type} 文档，找到 {len(search_results)} 个相关文件")
+            
+            # 0. 标准化输出格式
+            format_mapping = {
+                'excel': 'xlsx', 'doc': 'docx', 'word': 'docx',
+                'ppt': 'pptx', 'text': 'txt'
+            }
+            output_format = format_mapping.get(output_format.lower(), output_format.lower())
+            
+            # 1. 验证输出格式
+            if output_format not in DocumentGenerationService.SUPPORTED_FORMATS:
+                return {
+                    'success': False,
+                    'error': f'暂不支持 {output_format} 格式，当前只支持: {", ".join(DocumentGenerationService.SUPPORTED_FORMATS)}',
+                    'query': query_text
+                }
+            
+            # 2. 转换搜索结果为文件内容格式
+            file_contents = []
+            processed_files = []
+            
+            for file_result in search_results[:10]:  # 限制最多10个文件避免token超限
+                try:
+                    document_info = file_result.get('document', {})
+                    document_id = document_info.get('id')
+                    file_name = document_info.get('name', '未知文件')
+                    
+                    if document_id and document_id not in processed_files:
+                        # 合并该文件的所有匹配片段
+                        chunks = file_result.get('chunks', [])
+                        combined_content = '\n'.join([chunk.get('text', '') for chunk in chunks[:5]])  # 每个文件最多5个片段
+                        
+                        if combined_content:
+                            file_contents.append({
+                                'file_name': file_name,
+                                'file_type': document_info.get('file_type', '未知'),
+                                'document_id': document_id,
+                                'content': combined_content[:2000],  # 限制内容长度
+                                'relevance_score': file_result.get('average_score', 0)
+                            })
+                            processed_files.append(document_id)
+                            
+                except Exception as e:
+                    logger.warning(f"处理搜索结果文件失败: {e}")
+                    continue
+            
+            if not file_contents:
+                return {
+                    'success': False,
+                    'error': '搜索结果中没有可用的文件内容',
+                    'query': query_text,
+                    'search_results_count': len(search_results)
+                }
+            
+            # 3. 使用LLM生成文档
+            generated_content = DocumentGenerationService._generate_content_with_llm(
+                source_type='搜索结果',
+                source_name=f"关键词'{search_keywords}'的搜索结果",
+                source_contents=file_contents,
+                document_type=document_type,
+                query_text=query_text,
+                llm_model=llm_model
+            )
+            
+            # 4. 保存生成的文档
+            source_name_for_file = search_keywords if search_keywords else '搜索结果'
+            saved_file = DocumentGenerationService._save_generated_document(
+                content=generated_content,
+                source_name=source_name_for_file,
+                document_type=document_type,
+                output_format=output_format,
+                parent_folder=None,  # 搜索结果生成的文档放在根目录
+                query_text=query_text
+            )
+            
+            return {
+                'success': True,
+                'query': query_text,
+                'source_type': '搜索结果',
+                'source_info': {
+                    'name': f"基于关键词'{search_keywords}'的搜索结果",
+                    'search_keywords': search_keywords,
+                    'total_files_found': len(search_results),
+                    'files_used': len(file_contents)
+                },
+                'processed_files_count': len(file_contents),
+                'total_files_count': len(search_results),
+                'document_type': document_type,
+                'output_format': output_format,
+                'generated_content': generated_content,
+                'saved_file': saved_file.to_dict() if saved_file else None,
+                'generation_method': 'llm_search_results_analysis',
+                'timestamp': datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"基于搜索结果生成文档失败: {e}")
+            return {
+                'success': False,
+                'error': f'基于搜索结果生成文档失败: {str(e)}',
+                'query': query_text
+            }
+    
+    @staticmethod
     def _find_source_node(source_path: str) -> Optional[DocumentNode]:
-        """查找源文件或文件夹节点"""
+        """查找源文件或文件夹节点 - 支持多关键词模糊查询"""
         try:
             # 清理路径名称
             source_name = source_path.strip()
@@ -117,24 +276,68 @@ class DocumentGenerationService:
             source_name = re.sub(r'^(?:这个|那个|该|此)', '', source_name)
             source_name = re.sub(r'(?:文件夹|文件|目录)$', '', source_name).strip()
             
-            # 按优先级查找：完全匹配 -> 包含匹配 -> 模糊匹配
-            search_conditions = [
-                DocumentNode.name == source_name,  # 完全匹配
-                DocumentNode.name.like(f'%{source_name}%'),  # 包含匹配
-            ]
+            # 检查是否包含多个关键词（空格分隔）
+            keywords = [kw.strip() for kw in source_name.split() if kw.strip()]
             
-            for condition in search_conditions:
+            logger.info(f"查找源节点: 原始='{source_path}' → 清理后='{source_name}' → 关键词={keywords}")
+            
+            # 如果有多个关键词，进行组合查询
+            if len(keywords) > 1:
+                # 多关键词查询：所有关键词都要匹配
+                conditions = []
+                for keyword in keywords:
+                    conditions.append(DocumentNode.name.like(f'%{keyword}%'))
+                
+                # 查找包含所有关键词的节点
                 nodes = DocumentNode.query.filter(
-                    and_(condition, DocumentNode.is_deleted == False)
+                    and_(and_(*conditions), DocumentNode.is_deleted == False)
                 ).all()
                 
                 if nodes:
-                    # 如果有多个匹配，优先返回文件夹
+                    logger.info(f"多关键词查询找到 {len(nodes)} 个匹配节点")
+                    # 优先返回文件夹
                     for node in nodes:
                         if node.type == 'folder':
                             return node
-                    # 如果没有文件夹，返回第一个文件
                     return nodes[0]
+                
+                # 如果所有关键词都匹配失败，尝试任意关键词匹配
+                or_conditions = []
+                for keyword in keywords:
+                    or_conditions.append(DocumentNode.name.like(f'%{keyword}%'))
+                
+                nodes = DocumentNode.query.filter(
+                    and_(or_(*or_conditions), DocumentNode.is_deleted == False)
+                ).all()
+                
+                if nodes:
+                    logger.info(f"任意关键词查询找到 {len(nodes)} 个匹配节点")
+                    # 优先返回文件夹
+                    for node in nodes:
+                        if node.type == 'folder':
+                            return node
+                    return nodes[0]
+            
+            else:
+                # 单关键词查询：按优先级查找
+                search_conditions = [
+                    DocumentNode.name == source_name,  # 完全匹配
+                    DocumentNode.name.like(f'%{source_name}%'),  # 包含匹配
+                ]
+                
+                for condition in search_conditions:
+                    nodes = DocumentNode.query.filter(
+                        and_(condition, DocumentNode.is_deleted == False)
+                    ).all()
+                    
+                    if nodes:
+                        logger.info(f"单关键词查询找到 {len(nodes)} 个匹配节点")
+                        # 如果有多个匹配，优先返回文件夹
+                        for node in nodes:
+                            if node.type == 'folder':
+                                return node
+                        # 如果没有文件夹，返回第一个文件
+                        return nodes[0]
             
             return None
             

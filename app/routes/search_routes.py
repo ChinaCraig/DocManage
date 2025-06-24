@@ -437,11 +437,123 @@ def semantic_search():
                         logger.info(f"参数提取结果 - 源路径: '{source_path}', 输出格式: {output_format}, 文档类型: {document_type}")
                         
                         if not source_path:
-                            # 没有找到源路径，返回错误
-                            message_content = [{
+                            # 源路径为空，尝试智能检索相关文档
+                            logger.info("源路径为空，尝试智能检索相关文档")
+                            
+                            try:
+                                # 1. 使用用户查询作为搜索关键词
+                                search_keywords = query_text
+                                
+                                # 2. 执行向量检索
+                                from app.services.vectorization.vector_service_adapter import VectorServiceAdapter
+                                vector_service = VectorServiceAdapter()
+                                raw_search_results = vector_service.search_similar(
+                                    query_text=search_keywords,
+                                    top_k=15,  # 多检索一些候选
+                                    min_score=0.3  # 设置合理的相似度阈值
+                                )
+                                
+                                if raw_search_results:
+                                    # 3. 聚合为文件级结果
+                                    file_results = aggregate_results_by_file(raw_search_results)
+                                    
+                                    if file_results:
+                                        # 4. 使用检索到的文档内容生成文档
+                                        generation_result = DocumentGenerationService.generate_from_search_results(
+                                            search_results=file_results,
+                                            output_format=output_format,
+                                            document_type=document_type,
+                                            query_text=query_text,
+                                            llm_model=llm_model,
+                                            search_keywords=search_keywords
+                                        )
+                                        
+                                        logger.info(f"基于搜索结果生成文档完成，成功: {generation_result.get('success')}")
+                                    else:
+                                        generation_result = {
+                                            'success': False,
+                                            'error': '搜索结果聚合失败，无法找到相关文档'
+                                        }
+                                else:
+                                    generation_result = {
+                                        'success': False,
+                                        'error': f'未找到与"{search_keywords}"相关的文档内容'
+                                    }
+                                    
+                            except Exception as search_error:
+                                logger.error(f"智能检索失败: {search_error}")
+                                generation_result = {
+                                    'success': False,
+                                    'error': f'智能检索过程中出现错误: {str(search_error)}'
+                                }
+                            
+                            # 处理检索生成结果
+                            if generation_result.get('success'):
+                                # 成功生成文档
+                                source_type = generation_result.get('source_type', 'unknown')
+                                source_info = generation_result.get('source_info', {})
+                                source_name = source_info.get('name', '搜索结果')
+                                generated_content = generation_result.get('generated_content', '')
+                                saved_file = generation_result.get('saved_file')
+                                
+                                # 处理生成内容中的超链接
+                                if generated_content:
+                                    try:
+                                        from app.services.preview.text_preview import TextPreviewService
+                                        preview_service = TextPreviewService()
+                                        processed_content = preview_service._process_hyperlinks(generated_content)
+                                    except Exception as e:
+                                        logger.warning(f"处理超链接失败: {e}")
+                                        processed_content = generated_content
+                                else:
+                                    processed_content = generated_content
+                                
+                                message_content = [
+                                    {
                                 "type": "text",
-                                "data": "⚠️ 无法确定要基于哪个文件或文件夹生成文档\n💡 请明确指定源文件或文件夹，支持多种表达方式：\n• 基于xx文件夹生成总结文档\n• 根据xx文件写个分析报告\n• 用xx文件夹做个统计\n• 帮我分析xx文件的内容\n• 从xx目录整理一份资料\n\n🤖 系统已使用AI智能识别，支持更自然的语言表达"
-                            }]
+                                        "data": f"🔍 智能检索到相关内容，基于{source_type} '{source_name}' 成功生成{DocumentGenerationService.DOCUMENT_TYPES.get(document_type, '文档')}"
+                                    },
+                                    {
+                                        "type": "markdown",
+                                        "data": f"## 生成的文档内容\n\n{processed_content}"
+                                    }
+                                ]
+                                
+                                if saved_file:
+                                    file_link_obj = {
+                                        "text": saved_file['name'],
+                                        "document_id": saved_file.get('id')
+                                    }
+                                    
+                                    message_content.append({
+                                        "type": "text",
+                                        "data": "💾 文档已保存为: "
+                                    })
+                                    
+                                    message_content.append({
+                                        "type": "table",
+                                        "data": {
+                                            "headers": ["生成的文档"],
+                                            "rows": [[file_link_obj]]
+                                        }
+                                    })
+                                
+                                # 添加搜索统计信息
+                                files_used = generation_result.get('processed_files_count', 0)
+                                total_found = generation_result.get('total_files_count', 0)
+                                message_content.append({
+                                    "type": "text",
+                                    "data": f"📊 搜索统计: 找到 {total_found} 个相关文件，使用 {files_used} 个文件生成文档"
+                                })
+                            else:
+                                # 检索生成失败，返回友好的错误提示
+                                error_msg = generation_result.get('error', '未知错误')
+                                message_content = [
+                                    {
+                                        "type": "text",
+                                        "data": f"🔍 智能检索未找到相关内容\n\n❌ {error_msg}\n\n💡 您可以尝试：\n• 更具体地描述要生成的文档内容\n• 明确指定源文件或文件夹名称\n• 使用更明确的关键词描述"
+                                    }
+                                ]
                         else:
                             # 调用文档生成服务
                             generation_result = DocumentGenerationService.generate_document(
