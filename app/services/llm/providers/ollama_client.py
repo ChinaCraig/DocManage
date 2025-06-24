@@ -77,12 +77,84 @@ class OllamaClient(BaseLLMClient):
             return results
         
         try:
-            # 简化重排序逻辑，直接返回原结果
-            # Ollama模型对于复杂的重排序任务可能表现不稳定
-            return results
+            # 对于Ollama，使用简化的意图感知重排序
+            batch_size = min(len(results), 3)  # 限制为3个结果，避免token过多
+            results_to_rank = results[:batch_size]
+            
+            # 基础意图分析
+            intent = self._get_basic_intent(query)
+            
+            # 构建简化的排序提示
+            items = []
+            for i, result in enumerate(results_to_rank):
+                doc_name = result.get('document', {}).get('name', '未知')
+                content = result.get('chunk_text', '')[:150]  # 保持较短以节省token
+                items.append(f"{i+1}. {doc_name}: {content}")
+            
+            # 简化的排序指导
+            guidance = self._get_simple_guidance(intent)
+            
+            prompt = f"""请对文档按相关性重新排序：
+
+查询：{query}
+{guidance}
+
+文档：
+{chr(10).join(items)}
+
+只输出排序序号，用逗号分隔（如：2,1,3）："""
+
+            data = {
+                "model": self.model,
+                "messages": [{"role": "user", "content": prompt}],
+                "stream": False
+            }
+            
+            response = self._make_request(data)
+            rank_str = response['message']['content'].strip()
+            
+            # 解析排序结果
+            if ',' in rank_str:
+                try:
+                    ranks = [int(x.strip()) - 1 for x in rank_str.split(',') if x.strip().isdigit()]
+                    reranked = []
+                    for rank in ranks:
+                        if 0 <= rank < len(results_to_rank):
+                            reranked.append(results_to_rank[rank])
+                    
+                    reranked.extend(results[batch_size:])
+                    logger.info(f"Ollama重排序成功 - 意图: {intent}, 新序列: {rank_str}")
+                    return reranked
+                except (ValueError, IndexError):
+                    logger.warning(f"Ollama排序结果解析失败: {rank_str}")
+                    return results
+            else:
+                return results
+            
         except Exception as e:
             logger.error(f"Ollama重排序失败: {e}")
             return results
+    
+    def _get_basic_intent(self, query: str) -> str:
+        """获取基础查询意图"""
+        if any(keyword in query for keyword in ['个人信息', '人员信息', '身份信息', '联系方式']):
+            return 'personal_info'
+        elif any(keyword in query for keyword in ['财务', '贷款', '金融', '收入', '负债']):
+            return 'financial_data'
+        elif any(keyword in query for keyword in ['总结', '概述', '摘要']):
+            return 'summary'
+        else:
+            return 'general'
+    
+    def _get_simple_guidance(self, intent: str) -> str:
+        """获取简化的排序指导"""
+        guidance_map = {
+            'personal_info': "优先排序包含完整个人信息的文档",
+            'financial_data': "优先排序包含具体金额和财务数据的文档",
+            'summary': "优先排序包含概述信息的文档",
+            'general': "优先排序内容最相关的文档"
+        }
+        return guidance_map.get(intent, guidance_map['general'])
     
     def generate_answer(self, query: str, context: str, scenario: str = None, style: str = None) -> str:
         """使用Ollama生成答案"""

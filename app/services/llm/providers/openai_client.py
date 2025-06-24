@@ -100,27 +100,24 @@ class OpenAIClient(BaseLLMClient):
         result_descriptions = []
         for i, result in enumerate(results_to_rank):
             desc = f"{i+1}. 文档: {result.get('document', {}).get('name', '未知文档')}\n"
-            desc += f"   内容: {result.get('chunk_text', '无内容')[:200]}...\n"
+            desc += f"   内容: {result.get('chunk_text', '无内容')[:300]}...\n"  # 增加内容长度
             desc += f"   相似度: {result.get('score', 0):.3f}"
             result_descriptions.append(desc)
         
-        prompt = f"""请根据用户查询对以下文档片段进行重新排序，按相关性从高到低排列。
-
-用户查询：{query}
-
-文档片段：
-{chr(10).join(result_descriptions)}
-
-请仅返回重新排序后的序号列表，用逗号分隔（如：3,1,4,2,5）："""
+        # 分析查询意图，生成智能化重排提示词
+        intent_analysis = self._analyze_query_intent(query)
+        
+        system_prompt = self._generate_rerank_system_prompt(intent_analysis)
+        user_prompt = self._generate_rerank_user_prompt(query, result_descriptions, intent_analysis)
 
         try:
             data = {
                 "model": self.model,
                 "messages": [
-                    {"role": "system", "content": "你是一个文档相关性排序专家。"},
-                    {"role": "user", "content": prompt}
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
                 ],
-                "max_tokens": 50,
+                "max_tokens": 100,
                 "temperature": 0.1
             }
             
@@ -142,7 +139,7 @@ class OpenAIClient(BaseLLMClient):
                 # 添加未参与重排序的结果
                 reranked_results.extend(results[batch_size:])
                 
-                logger.info(f"结果重排序完成 - 原序列: 1-{len(results_to_rank)}, 新序列: {rank_str}")
+                logger.info(f"智能重排序完成 - 查询意图: {intent_analysis.get('intent', '未知')}, 新序列: {rank_str}")
                 return reranked_results
                 
             except (ValueError, IndexError) as e:
@@ -152,6 +149,112 @@ class OpenAIClient(BaseLLMClient):
         except Exception as e:
             logger.error(f"结果重排序失败: {e}")
             return results  # 降级返回原结果
+    
+    def _analyze_query_intent(self, query: str) -> Dict:
+        """分析查询意图"""
+        intent_patterns = {
+            'personal_info': ['个人信息', '人员信息', '身份信息', '联系方式', '个人资料', '基本信息'],
+            'financial_data': ['财务数据', '贷款信息', '金融数据', '收入', '负债', '资产'],
+            'document_summary': ['总结', '概述', '简介', '摘要', '内容', '主要'],
+            'specific_details': ['详细', '具体', '明细', '细节', '详情'],
+            'comparison': ['比较', '对比', '差异', '区别', '相同'],
+            'time_related': ['时间', '日期', '期间', '历史', '记录']
+        }
+        
+        for intent, keywords in intent_patterns.items():
+            if any(keyword in query for keyword in keywords):
+                return {
+                    'intent': intent,
+                    'keywords': [kw for kw in keywords if kw in query]
+                }
+        
+        return {'intent': 'general', 'keywords': []}
+    
+    def _generate_rerank_system_prompt(self, intent_analysis: Dict) -> str:
+        """根据查询意图生成系统提示词"""
+        intent = intent_analysis.get('intent', 'general')
+        
+        base_prompt = "你是一个智能文档相关性排序专家。你需要根据用户的具体查询需求，对文档片段进行精准排序。"
+        
+        intent_specific_prompts = {
+            'personal_info': """
+你专门处理个人信息查询。排序时请优先考虑：
+1. 包含完整个人信息字段的文档（姓名、身份证、联系方式、地址等）
+2. 结构化的个人资料表格或表单
+3. 信息完整度和准确性
+4. 避免只有姓名提及而无其他信息的片段排在前面""",
+            
+            'financial_data': """
+你专门处理财务数据查询。排序时请优先考虑：
+1. 包含具体数字和金额的文档
+2. 结构化的财务表格或报表
+3. 贷款、收入、资产等相关数据的完整性
+4. 数据的时效性和准确性""",
+            
+            'document_summary': """
+你专门处理文档总结查询。排序时请优先考虑：
+1. 包含概述性信息的段落
+2. 文档开头或结尾的总结性内容
+3. 标题和关键要点
+4. 内容的全面性和代表性""",
+            
+            'specific_details': """
+你专门处理具体细节查询。排序时请优先考虑：
+1. 包含详细描述和具体数据的片段
+2. 技术细节或操作步骤
+3. 明细列表或详细说明
+4. 信息的准确性和可操作性""",
+            
+            'general': """
+你处理一般性查询。排序时请优先考虑：
+1. 内容与查询关键词的匹配程度
+2. 信息的完整性和准确性
+3. 上下文的相关性
+4. 内容的实用性"""
+        }
+        
+        return base_prompt + intent_specific_prompts.get(intent, intent_specific_prompts['general'])
+    
+    def _generate_rerank_user_prompt(self, query: str, result_descriptions: List[str], intent_analysis: Dict) -> str:
+        """根据查询意图生成用户提示词"""
+        intent = intent_analysis.get('intent', 'general')
+        keywords = intent_analysis.get('keywords', [])
+        
+        base_prompt = f"""请根据用户的具体查询需求对以下文档片段进行重新排序，按相关性从高到低排列。
+
+用户查询：{query}
+查询意图：{intent}
+关键要素：{', '.join(keywords) if keywords else '通用查询'}
+
+文档片段：
+{chr(10).join(result_descriptions)}
+
+排序指导原则：
+"""
+        
+        ranking_guidelines = {
+            'personal_info': """
+- 优先排序包含多个个人信息字段的文档
+- 结构化的个人资料（如申请表、登记表）排在前面
+- 仅有姓名提及但无其他信息的文档排在后面
+- 考虑信息的完整性和实用性""",
+            
+            'financial_data': """
+- 优先排序包含具体金额和财务数据的文档
+- 表格化的财务信息排在前面
+- 考虑数据的准确性和相关性
+- 综合性财务报告优于单一数据点""",
+            
+            'general': """
+- 优先排序内容完整、信息丰富的文档
+- 考虑与查询关键词的匹配度
+- 结构化信息优于零散信息
+- 准确性和实用性并重"""
+        }
+        
+        guideline = ranking_guidelines.get(intent, ranking_guidelines['general'])
+        
+        return base_prompt + guideline + "\n\n请仅返回重新排序后的序号列表，用逗号分隔（如：3,1,4,2,5）："
     
     def generate_answer(self, query: str, context: str, scenario: str = None, style: str = None) -> str:
         """基于检索结果生成答案"""
