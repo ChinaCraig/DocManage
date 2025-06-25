@@ -223,27 +223,25 @@ def upload_file():
         
         db.session.commit()
         
-        # 异步处理文件内容提取（这里简化为同步处理）
-        try:
-            _process_file_content(document.id, file_path, file_type)
-        except Exception as e:
-            logger.warning(f"文件内容处理失败: {str(e)}")
-        
         # 重新查询以获取标签信息
         updated_doc = DocumentNode.query.get(document.id)
         
-        # 自动触发后台向量化
+        # 标记文档为需要处理（向量化在后台进行）
+        updated_doc.vector_status = 'not_started'  # 向量化状态
+        db.session.commit()
+        
+        # 自动触发后台向量化（包含内容提取）
         try:
             from app.routes.vectorize_routes import start_background_vectorization
             start_background_vectorization()
-            logger.info("文件上传完成，已自动启动后台索引任务")
+            logger.info("文件上传完成，已启动后台内容提取和索引任务")
         except Exception as e:
-            logger.warning(f"启动后台索引失败: {str(e)}")
+            logger.warning(f"启动后台处理失败: {str(e)}")
         
         return jsonify({
             'success': True,
             'data': updated_doc.to_dict(),
-            'message': '文件上传成功，已启动自动索引'
+            'message': '文件上传成功，后台处理中'
         })
         
     except Exception as e:
@@ -560,11 +558,8 @@ def upload_batch():
                         'type': file_type
                     })
                     
-                    # 异步处理文件内容提取
-                    try:
-                        _process_file_content(document.id, file_save_path, file_type)
-                    except Exception as e:
-                        logger.warning(f"文件内容处理失败 {original_filename}: {str(e)}")
+                    # 标记文档为需要后台处理
+                    document.vector_status = 'not_started'
             
             except Exception as e:
                 logger.error(f"处理文件失败 {file.filename}: {str(e)}")
@@ -581,14 +576,14 @@ def upload_batch():
         try:
             from app.routes.vectorize_routes import start_background_vectorization
             start_background_vectorization()
-            logger.info("批量上传完成，已自动启动后台索引任务")
+            logger.info("批量上传完成，已启动后台内容提取和索引任务")
         except Exception as e:
-            logger.warning(f"启动后台索引失败: {str(e)}")
+            logger.warning(f"启动后台处理失败: {str(e)}")
         
         result_message = f'批量上传完成，共上传 {len(uploaded_files)} 个文件，创建 {len(created_folders)} 个文件夹'
         if skipped_files:
             result_message += f'，跳过 {len(skipped_files)} 个文件'
-        result_message += '，已启动自动索引'
+        result_message += '，后台处理中'
         
         return jsonify({
             'success': True,

@@ -142,15 +142,36 @@ class ImageRecognitionService:
     
     def _select_best_engine(self) -> str:
         """选择最佳的识别引擎"""
-        # 优先级: PaddleOCR > EasyOCR > Tesseract
-        if 'paddleocr' in self.available_engines:
-            return 'paddleocr'
-        elif 'easyocr' in self.available_engines:
-            return 'easyocr'
-        elif 'tesseract' in self.available_engines:
-            return 'tesseract'
+        # 基于能力和识别效果的优先级排序: PaddleOCR > EasyOCR > Tesseract
+        # PaddleOCR: 中文识别最强，准确率最高
+        # EasyOCR: 兼容性好，多语言支持，稳定可靠
+        # Tesseract: 基础支持，保底选项
+        
+        for engine in ['paddleocr', 'easyocr', 'tesseract']:
+            if engine in self.available_engines:
+                # 对PaddleOCR进行快速可用性测试
+                if engine == 'paddleocr':
+                    try:
+                        from paddleocr import PaddleOCR
+                        # 尝试快速初始化测试
+                        test_ocr = PaddleOCR(use_angle_cls=True, lang='ch')
+                        del test_ocr  # 释放资源
+                        logger.info("PaddleOCR可用性测试通过，选择为主引擎")
+                        return 'paddleocr'
+                    except Exception as e:
+                        logger.warning(f"PaddleOCR可用性测试失败，降级到下一个引擎: {e}")
+                        continue
+                else:
+                    logger.info(f"选择{engine.upper()}引擎")
+                    return engine
+        
+        # 如果所有引擎都不可用，返回第一个可用的引擎
+        if self.available_engines:
+            logger.warning(f"使用备用引擎: {self.available_engines[0]}")
+            return self.available_engines[0]
         else:
-            return self.available_engines[0] if self.available_engines else 'none'
+            logger.error("没有可用的OCR引擎")
+            return 'none'
     
     def _recognize_with_engine(self, image_path: str, engine: str, languages: List[str]) -> Dict[str, Any]:
         """使用指定引擎进行识别"""
@@ -303,8 +324,46 @@ class ImageRecognitionService:
             # 判断是否包含中文
             use_chinese = 'zh' in languages
             
-            # 初始化PaddleOCR
-            ocr = PaddleOCR(use_angle_cls=True, lang='ch' if use_chinese else 'en')
+            # 尝试不同的初始化策略
+            ocr = None
+            error_messages = []
+            
+            # 策略1：使用旧参数名（PaddleOCR 2.7.0兼容）
+            try:
+                ocr = PaddleOCR(
+                    use_angle_cls=True, 
+                    lang='ch' if use_chinese else 'en'
+                )
+            except Exception as e1:
+                error_messages.append(f"策略1失败: {str(e1)}")
+                
+                # 策略2：最简配置
+                try:
+                    ocr = PaddleOCR(lang='ch' if use_chinese else 'en')
+                except Exception as e2:
+                    error_messages.append(f"策略2失败: {str(e2)}")
+                    
+                    # 策略3：新参数名（保留向后兼容）
+                    try:
+                        ocr = PaddleOCR(
+                            use_textline_orientation=True, 
+                            lang='ch' if use_chinese else 'en'
+                        )
+                    except Exception as e3:
+                        error_messages.append(f"策略3失败: {str(e3)}")
+                        
+                        # 策略4：完全默认配置
+                        try:
+                            ocr = PaddleOCR()
+                        except Exception as e4:
+                            error_messages.append(f"策略4失败: {str(e4)}")
+            
+            if ocr is None:
+                all_errors = "; ".join(error_messages)
+                return {
+                    'success': False,
+                    'error': f'PaddleOCR初始化失败: {all_errors}'
+                }
             
             # 执行识别
             results = ocr.ocr(image_path, cls=True)
