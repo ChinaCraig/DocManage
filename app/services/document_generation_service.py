@@ -1251,13 +1251,14 @@ class DocumentGenerationService:
     def _extract_pdf_content(file_path: str) -> Optional[str]:
         """提取PDF文件内容"""
         try:
-            # 优先使用项目中的PDF服务
-            from app.services.pdf_service import PDFService
-            result = PDFService.extract_text(file_path)
+            # 使用项目中的PDF向量化器
+            from app.services.vectorization.pdf_vectorizer import PDFVectorizer
+            vectorizer = PDFVectorizer()
+            result = vectorizer.extract_text(file_path, extract_images=False)  # 不提取图片以加快速度
             if result and result.get('success'):
                 return result.get('text', '')
             
-            # 如果PDF服务失败，尝试使用PyPDF2
+            # 如果PDF向量化器失败，尝试使用PyPDF2作为降级方案
             try:
                 import PyPDF2
                 with open(file_path, 'rb') as file:
@@ -1296,13 +1297,14 @@ class DocumentGenerationService:
     def _extract_word_content(file_path: str) -> Optional[str]:
         """提取Word文档内容"""
         try:
-            # 优先使用项目中的Word服务
-            from app.services.word_service import WordService
-            result = WordService.extract_text(file_path)
+            # 使用项目中的Word向量化器
+            from app.services.vectorization.word_vectorizer import WordVectorizer
+            vectorizer = WordVectorizer()
+            result = vectorizer.extract_text(file_path)
             if result and result.get('success'):
                 return result.get('text', '')
             
-            # 如果Word服务失败，尝试使用python-docx
+            # 如果Word向量化器失败，尝试使用python-docx作为降级方案
             try:
                 import docx
                 doc = docx.Document(file_path)
@@ -1334,13 +1336,14 @@ class DocumentGenerationService:
     def _extract_excel_content(file_path: str) -> Optional[str]:
         """提取Excel文件内容"""
         try:
-            # 优先使用项目中的Excel服务
-            from app.services.excel_service import ExcelService
-            result = ExcelService.extract_text(file_path)
+            # 使用项目中的Excel向量化器
+            from app.services.vectorization.excel_vectorizer import ExcelVectorizer
+            vectorizer = ExcelVectorizer()
+            result = vectorizer.extract_text(file_path)
             if result and result.get('success'):
                 return result.get('text', '')
             
-            # 如果Excel服务失败，尝试使用openpyxl和pandas
+            # 如果Excel向量化器失败，尝试使用pandas作为降级方案
             try:
                 import pandas as pd
                 

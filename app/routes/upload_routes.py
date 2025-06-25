@@ -4,9 +4,9 @@ from werkzeug.utils import secure_filename
 from flask import Blueprint, request, jsonify, current_app
 from app import db
 from app.models import DocumentNode, DocumentContent, VectorRecord, SystemConfig, Tag, DocumentTag
-from app.services import PDFService, WordService, ExcelService, ImageService, VideoService
 import logging
 from app.services.vectorization import VectorServiceAdapter
+from app.services.vectorization.vectorization_factory import VectorizationFactory
 
 logger = logging.getLogger(__name__)
 
@@ -62,15 +62,37 @@ def is_hidden_file(filename):
     return False
 
 def get_file_service(file_type):
-    """根据文件类型获取对应的服务"""
-    services = {
-        'pdf': PDFService(),
-        'word': WordService(),
-        'excel': ExcelService(),
-        'image': ImageService(),
-        'video': VideoService()
-    }
-    return services.get(file_type)
+    """根据文件类型获取对应的向量化器（替代空实现的service）"""
+    # 创建向量化工厂
+    factory = VectorizationFactory()
+    
+    # 根据文件类型获取对应的向量化器
+    vectorizer = factory.get_vectorizer_by_type(file_type)
+    
+    if vectorizer:
+        # 为向量化器添加兼容的方法，以便与现有代码兼容
+        def extract_text_content_wrapper(file_path):
+            return vectorizer.extract_text(file_path)
+        
+        def split_into_chunks_wrapper(text, chunk_size=512, overlap=50):
+            return vectorizer.chunk_text(text, chunk_size, overlap)
+        
+        # 创建一个包装对象
+        class VectorizerWrapper:
+            def __init__(self, vectorizer):
+                self.vectorizer = vectorizer
+            
+            def extract_text_content(self, file_path):
+                return self.vectorizer.extract_text(file_path)
+            
+            def split_into_chunks(self, text, chunk_size=512, overlap=50):
+                return self.vectorizer.chunk_text(text, chunk_size, overlap)
+        
+        return VectorizerWrapper(vectorizer)
+    
+    # 降级处理：如果没有找到对应的vectorizer，返回None
+    logger.warning(f"未找到文件类型 {file_type} 对应的处理器")
+    return None
 
 def _add_tags_to_document(document_id, tag_ids):
     """为文档添加标签"""
