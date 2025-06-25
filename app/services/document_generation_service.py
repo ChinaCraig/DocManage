@@ -89,9 +89,9 @@ class DocumentGenerationService:
                     
                     vector_adapter = VectorServiceAdapter()
                     search_results = vector_adapter.search(
-                        query=source_path,  # 直接使用源路径作为搜索关键词
+                        query_text=source_path,  # 直接使用源路径作为搜索关键词
                         top_k=10,
-                        threshold=0.3
+                        min_score=0.3
                     )
                     
                     if search_results and len(search_results) > 0:

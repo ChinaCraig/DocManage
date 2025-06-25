@@ -445,7 +445,6 @@ def semantic_search():
                                 search_keywords = query_text
                                 
                                 # 2. 执行向量检索
-                                from app.services.vectorization.vector_service_adapter import VectorServiceAdapter
                                 vector_service = VectorServiceAdapter()
                                 raw_search_results = vector_service.search_similar(
                                     query_text=search_keywords,
