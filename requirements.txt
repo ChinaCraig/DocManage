@@ -27,21 +27,6 @@ xlrd==2.0.1
 pytesseract==0.3.10
 Pillow>=10.1.0
 easyocr==1.7.0
-# PaddleOCR稳定版本组合 (已降级修复初始化问题)
-paddlepaddle==2.6.0
-paddleocr==2.7.0
-numpy==1.24.4
-opencv-python==4.6.0.66
-opencv-contrib-python==4.6.0.66
-shapely>=2.0.0
-# PaddleOCR 2.7.0 依赖项
-imgaug
-attrdict
-fire
-lmdb
-pdf2docx
-rapidfuzz
-visualdl
 
 # 视频处理
 opencv-python==4.8.1.78
@@ -61,4 +46,19 @@ python-dotenv>=1.0.1,<2.0.0
 Werkzeug==2.3.7
 chardet==5.2.0
 jieba==0.42.1
-PyYAML>=6.0 
+PyYAML>=6.0
+
+# PaddleOCR稳定版本组合 (可选 - 仅在需要PaddleOCR时安装)
+# paddlepaddle==2.6.0
+# paddleocr==2.7.0
+# numpy==1.24.4  # 注意：与上面的numpy版本可能冲突
+# opencv-python==4.6.0.66  # 注意：与上面的opencv版本可能冲突
+# opencv-contrib-python==4.6.0.66
+# shapely>=2.0.0
+# imgaug
+# attrdict
+# fire
+# lmdb
+# pdf2docx
+# rapidfuzz
+# visualdl
