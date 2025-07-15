@@ -11,6 +11,9 @@ import uuid
 from datetime import datetime
 import threading
 
+# 导入torch配置模块
+from ..torch_config import configure_torch_for_cpu_gpu_compatibility
+
 logger = logging.getLogger(__name__)
 
 # 全局模型实例和锁，避免重复加载
@@ -34,6 +37,10 @@ class BaseVectorizer(ABC):
         
         if not self.enabled:
             logger.warning("Vector service is disabled by configuration")
+            return
+            
+        # 在初始化时配置torch环境
+        configure_torch_for_cpu_gpu_compatibility()
     
     def _detect_model_dimension(self, model) -> int:
         """检测模型的实际维度"""
@@ -155,16 +162,14 @@ class BaseVectorizer(ABC):
             
             try:
                 logger.info(f"Loading text embedding model: {model_name}")
+                
+                # 确保torch环境已配置
+                configure_torch_for_cpu_gpu_compatibility()
+                
                 from sentence_transformers import SentenceTransformer
                 
-                # 设置环境变量避免并发问题和警告
+                # 设置环境变量避免并发问题
                 os.environ['TOKENIZERS_PARALLELISM'] = 'false'
-                
-                # 设置torch环境变量以避免pin_memory警告
-                import torch
-                if not torch.cuda.is_available():
-                    # 如果没有GPU，强制禁用pin_memory
-                    os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:128'
                 
                 # 加载模型
                 _model_instance = SentenceTransformer(model_name)

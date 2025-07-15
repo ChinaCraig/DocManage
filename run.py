@@ -6,6 +6,14 @@ import os
 import logging
 import warnings
 from dotenv import load_dotenv
+
+# 在导入任何其他模块之前配置torch环境
+try:
+    from app.services.torch_config import setup_sentence_transformers_environment
+    setup_sentence_transformers_environment()
+except Exception as e:
+    print(f"⚠️ Failed to setup torch environment: {e}")
+
 from app import create_app, db
 
 # 加载环境变量文件
@@ -17,16 +25,10 @@ def setup_environment():
     warnings.filterwarnings('ignore', category=UserWarning, module='PIL')
     warnings.filterwarnings('ignore', message='.*iCCP.*')
     
-    # 设置torch环境变量以避免警告
+    # 设置基本环境变量
     os.environ['TOKENIZERS_PARALLELISM'] = 'false'
     
-    # 检查是否有GPU，没有的话设置相应环境变量
-    try:
-        import torch
-        if not torch.cuda.is_available():
-            os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:128'
-    except ImportError:
-        pass
+    print("🔧 Basic environment configured")
 
 def setup_logging():
     """设置日志"""
