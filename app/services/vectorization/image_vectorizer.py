@@ -7,7 +7,8 @@ import logging
 import os
 from typing import List, Dict, Any
 from .base_vectorizer import BaseVectorizer
-from ..image_recognition_service import ImageRecognitionService
+from ..enhanced_image_recognition_service import get_enhanced_image_service
+from ..ocr_config_manager import get_ocr_config_manager
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,13 @@ class ImageVectorizer(BaseVectorizer):
         """初始化图片向量化器"""
         super().__init__()
         self.file_type = "image"
-        self.recognition_service = ImageRecognitionService()
+        # 使用统一的OCR配置管理器
+        config_manager = get_ocr_config_manager()
+        ocr_config = config_manager.get_resource_config_for_document_type('image')
+        self.recognition_service = get_enhanced_image_service(ocr_config)
+        self.config_manager = config_manager
+        
+        logger.info(f"✅ 图片向量化器初始化完成，OCR配置: 并发{ocr_config.max_concurrent_tasks}, 超时{ocr_config.single_task_timeout}s")
     
     def get_supported_extensions(self) -> List[str]:
         """获取支持的文件扩展名"""
@@ -58,11 +65,14 @@ class ImageVectorizer(BaseVectorizer):
                     'languages': ['zh', 'en']
                 }
             
-            # 使用图像识别服务进行内容识别
-            recognition_result = self.recognition_service.recognize_image(
+            # 使用增强的图像识别服务，带资源控制
+            filename = os.path.basename(file_path)
+            task_name = f"图片识别({filename})"
+            recognition_result = self.recognition_service.recognize_image_with_control(
                 file_path,
                 engine=recognition_options.get('engine', 'auto'),
-                languages=recognition_options.get('languages', ['zh', 'en'])
+                languages=recognition_options.get('languages', ['zh', 'en']),
+                task_name=task_name
             )
             
             if not recognition_result.get('success'):

@@ -54,6 +54,7 @@ chardet==5.2.0
 jieba==0.42.1
 PyYAML==6.0.1
 shapely==2.0.1
+psutil==5.9.5
 
 # 可选依赖 - 按需安装
 # paddlepaddle==2.5.2

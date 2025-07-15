@@ -10,7 +10,8 @@ import tempfile
 import fitz  # PyMuPDF
 from typing import List, Dict, Any, Optional
 from .base_vectorizer import BaseVectorizer
-from ..image_recognition_service import ImageRecognitionService
+from ..enhanced_image_recognition_service import get_enhanced_image_service
+from ..ocr_config_manager import get_ocr_config_manager
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,13 @@ class PDFVectorizer(BaseVectorizer):
         """初始化PDF向量化器"""
         super().__init__()
         self.file_type = "pdf"
-        self.recognition_service = ImageRecognitionService()
+        # 使用统一的OCR配置管理器
+        config_manager = get_ocr_config_manager()
+        ocr_config = config_manager.get_resource_config_for_document_type('pdf')
+        self.recognition_service = get_enhanced_image_service(ocr_config)
+        self.config_manager = config_manager
+        
+        logger.info(f"✅ PDF向量化器初始化完成，OCR配置: 并发{ocr_config.max_concurrent_tasks}, 超时{ocr_config.single_task_timeout}s, 最大图片{ocr_config.max_images_per_document}张")
     
     def get_supported_extensions(self) -> List[str]:
         """获取支持的文件扩展名"""
@@ -150,11 +157,13 @@ class PDFVectorizer(BaseVectorizer):
                                     temp_img_path = temp_file.name
                                 
                                 try:
-                                    # 识别图片内容
-                                    recognition_result = self.recognition_service.recognize_image(
+                                    # 使用增强的图像识别服务，带资源控制
+                                    task_name = f"PDF第{page_num + 1}页图片{img_index + 1}"
+                                    recognition_result = self.recognition_service.recognize_image_with_control(
                                         temp_img_path,
                                         engine=recognition_options.get('engine', 'auto'),
-                                        languages=recognition_options.get('languages', ['zh', 'en'])
+                                        languages=recognition_options.get('languages', ['zh', 'en']),
+                                        task_name=task_name
                                     )
                                     
                                     if recognition_result.get('success'):
