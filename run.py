@@ -4,11 +4,29 @@
 """
 import os
 import logging
+import warnings
 from dotenv import load_dotenv
 from app import create_app, db
 
 # 加载环境变量文件
 load_dotenv('config.env')
+
+def setup_environment():
+    """设置环境变量和警告抑制"""
+    # 抑制PIL图像警告
+    warnings.filterwarnings('ignore', category=UserWarning, module='PIL')
+    warnings.filterwarnings('ignore', message='.*iCCP.*')
+    
+    # 设置torch环境变量以避免警告
+    os.environ['TOKENIZERS_PARALLELISM'] = 'false'
+    
+    # 检查是否有GPU，没有的话设置相应环境变量
+    try:
+        import torch
+        if not torch.cuda.is_available():
+            os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:128'
+    except ImportError:
+        pass
 
 def setup_logging():
     """设置日志"""
@@ -23,6 +41,9 @@ def setup_logging():
 
 def main():
     """主函数"""
+    # 设置环境变量和警告抑制
+    setup_environment()
+    
     setup_logging()
     logger = logging.getLogger(__name__)
     

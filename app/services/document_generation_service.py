@@ -571,7 +571,9 @@ class DocumentGenerationService:
                 
                 # 5. 图片文件OCR识别
                 elif file_type in ['jpg', 'jpeg', 'png', 'bmp', 'tiff', 'gif']:
-                    ocr_result = ImageRecognitionService.recognize_text(file.file_path)
+                    from ..image_recognition_service import ImageRecognitionService
+                    recognition_service = ImageRecognitionService()
+                    ocr_result = recognition_service.recognize_image(file.file_path)
                     if ocr_result and ocr_result.get('success'):
                         return ocr_result.get('text', '')
                     return None

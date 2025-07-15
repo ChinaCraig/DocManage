@@ -7,9 +7,13 @@ import logging
 import os
 import json
 import base64
+import warnings
 from typing import Dict, List, Any, Optional, Tuple
 from PIL import Image
 import io
+
+# 抑制PIL相关警告
+warnings.filterwarnings('ignore', category=UserWarning, module='PIL')
 
 # 兼容性修复：为新版本Pillow添加ANTIALIAS别名
 try:
@@ -68,12 +72,16 @@ class ImageRecognitionService:
         Returns:
             识别结果字典
         """
+        preprocessed_image = None
         try:
             if not os.path.exists(image_path):
                 return {
                     'success': False,
                     'error': f'图像文件不存在: {image_path}'
                 }
+            
+            # 预处理图像，修复ICC配置文件问题
+            preprocessed_image = self._preprocess_image(image_path)
             
             # 获取图像基本信息
             image_info = self._get_image_info(image_path)
@@ -102,8 +110,8 @@ class ImageRecognitionService:
             if languages is None:
                 languages = ['zh', 'en']  # 中英文
             
-            # 执行图像识别
-            result = self._recognize_with_engine(image_path, engine, languages)
+            # 执行图像识别（使用预处理后的图像）
+            result = self._recognize_with_engine(preprocessed_image, engine, languages)
             
             # 添加图像信息和增强描述
             if result.get('success'):
@@ -120,6 +128,13 @@ class ImageRecognitionService:
                 'success': False,
                 'error': f'图像识别失败: {str(e)}'
             }
+        finally:
+            # 清理临时文件
+            if preprocessed_image and preprocessed_image != image_path and os.path.exists(preprocessed_image):
+                try:
+                    os.remove(preprocessed_image)
+                except Exception as e:
+                    logger.warning(f"清理临时文件失败: {e}")
     
     def _get_image_info(self, image_path: str) -> Dict[str, Any]:
         """获取图像基本信息"""
@@ -139,6 +154,39 @@ class ImageRecognitionService:
                 'file_size': os.path.getsize(image_path),
                 'file_name': os.path.basename(image_path)
             }
+    
+    def _preprocess_image(self, image_path: str) -> str:
+        """
+        预处理图像文件，修复ICC配置文件问题
+        
+        Args:
+            image_path: 原始图像路径
+            
+        Returns:
+            处理后的图像路径（可能是临时文件）
+        """
+        try:
+            # 打开图像
+            with Image.open(image_path) as img:
+                # 如果图像有ICC配置文件，移除它
+                if 'icc_profile' in img.info:
+                    # 创建一个没有ICC配置文件的副本
+                    img_without_icc = img.copy()
+                    # 移除ICC配置文件
+                    if 'icc_profile' in img_without_icc.info:
+                        del img_without_icc.info['icc_profile']
+                    
+                    # 保存为临时文件
+                    temp_path = image_path + '.temp.png'
+                    img_without_icc.save(temp_path, 'PNG')
+                    return temp_path
+                
+                # 如果没有ICC配置文件问题，直接返回原路径
+                return image_path
+                
+        except Exception as e:
+            logger.warning(f"图像预处理失败，使用原始文件: {e}")
+            return image_path
     
     def _select_best_engine(self) -> str:
         """选择最佳的识别引擎"""

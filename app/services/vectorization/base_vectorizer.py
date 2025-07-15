@@ -157,8 +157,14 @@ class BaseVectorizer(ABC):
                 logger.info(f"Loading text embedding model: {model_name}")
                 from sentence_transformers import SentenceTransformer
                 
-                # 设置环境变量避免并发问题
+                # 设置环境变量避免并发问题和警告
                 os.environ['TOKENIZERS_PARALLELISM'] = 'false'
+                
+                # 设置torch环境变量以避免pin_memory警告
+                import torch
+                if not torch.cuda.is_available():
+                    # 如果没有GPU，强制禁用pin_memory
+                    os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:128'
                 
                 # 加载模型
                 _model_instance = SentenceTransformer(model_name)
