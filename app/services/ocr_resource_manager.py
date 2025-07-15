@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError, as_completed
 from typing import Dict, List, Any, Optional, Callable
 from dataclasses import dataclass
 from contextlib import contextmanager
-import signal
+
 
 logger = logging.getLogger(__name__)
 
@@ -182,18 +182,9 @@ class OCRResourceManager:
     def _safe_ocr_wrapper(self, ocr_func: Callable, *args, **kwargs) -> Dict[str, Any]:
         """安全的OCR包装器"""
         try:
-            # 设置信号处理器以防止进程卡死
-            original_handler = signal.signal(signal.SIGALRM, self._timeout_handler)
-            signal.alarm(self.config.single_task_timeout)
-            
-            try:
-                result = ocr_func(*args, **kwargs)
-                return result if isinstance(result, dict) else {'success': True, 'result': result}
-                
-            finally:
-                # 恢复原始信号处理器
-                signal.alarm(0)
-                signal.signal(signal.SIGALRM, original_handler)
+            # 直接执行OCR函数，超时控制由ThreadPoolExecutor负责
+            result = ocr_func(*args, **kwargs)
+            return result if isinstance(result, dict) else {'success': True, 'result': result}
                 
         except Exception as e:
             logger.error(f"OCR包装器执行失败: {e}")
@@ -203,9 +194,7 @@ class OCRResourceManager:
                 'error_type': 'wrapper_error'
             }
     
-    def _timeout_handler(self, signum, frame):
-        """超时信号处理器"""
-        raise TimeoutError("OCR任务超时")
+
     
     def execute_batch_ocr(self, 
                          ocr_tasks: List[Dict[str, Any]], 

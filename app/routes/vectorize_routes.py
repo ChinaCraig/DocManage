@@ -199,8 +199,8 @@ def process_background_vectorization(app):
                         background_vectorization_status['current_doc']['step'] = '文本分段处理'
                         chunks = vectorizer.chunk_text(
                             extracted_text,
-                            chunk_size=1000,
-                            overlap=200
+                            chunk_size=100,
+                            overlap=20
                         )
                         
                         if not chunks:
